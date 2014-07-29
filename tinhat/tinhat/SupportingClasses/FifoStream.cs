@@ -102,6 +102,10 @@ namespace tinhat.SupportingClasses
 
             var newBytes = new byte[count];
             Array.Copy(buffer, offset, newBytes, 0, count);
+            if (this.Zeroize)
+            {
+                Array.Clear(buffer, offset, count);
+            }
 
             lock (this.queue)
             {

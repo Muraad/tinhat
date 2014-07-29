@@ -17,42 +17,30 @@ namespace tinhat.EntropySources
         /// <summary>
         /// ThreadedSeedGeneratorRNG will always try to fill up to MaxPoolSize bytes available for read
         /// </summary>
-        public int MaxPoolSize { get; private set; }
+        public static int MaxPoolSize { get; private set; }
 
-        private ThreadedSeedGenerator myThreadedSeedGeneratorRNG = new ThreadedSeedGenerator();
-
-        private object fifoStreamLock = new object();
-        private SupportingClasses.FifoStream myFifoStream = new SupportingClasses.FifoStream(Zeroize: true);
-        private Thread mainThread;
-        private AutoResetEvent poolFullARE = new AutoResetEvent(false);
+        private static object fifoStreamLock = new object();
+        private static SupportingClasses.FifoStream myFifoStream = new SupportingClasses.FifoStream(Zeroize: true);
+        private static Thread mainThread;
+        private static AutoResetEvent poolFullARE = new AutoResetEvent(false);
+        private static ThreadedSeedGenerator myThreadedSeedGenerator = new ThreadedSeedGenerator();
 
         // Interlocked cannot handle bools.  So using int as if it were bool.
         private const int TrueInt = 1;
         private const int FalseInt = 0;
         private int disposed = FalseInt;
 
-        // Create a static instance, in the static constructor, to start building an entropy pool as early as possible.
-        private static ThreadedSeedGeneratorRNG staticThreadSchedulerRNG;
-
         static ThreadedSeedGeneratorRNG()
         {
-            staticThreadSchedulerRNG = new ThreadedSeedGeneratorRNG();
+            MaxPoolSize = 4096;
+            mainThread = new Thread(new ThreadStart(mainThreadLoop));
+            mainThread.IsBackground = true;    // Don't prevent application from dying if it wants to.
+            mainThread.Start();
         }
         public ThreadedSeedGeneratorRNG()
         {
-            this.MaxPoolSize = 4096;
-            this.mainThread = new Thread(new ThreadStart(mainThreadLoop));
-            this.mainThread.IsBackground = true;    // Don't prevent application from dying if it wants to.
-            this.mainThread.Start();
         }
-        public ThreadedSeedGeneratorRNG(int MaxPoolSize)
-        {
-            this.MaxPoolSize = MaxPoolSize;
-            this.mainThread = new Thread(new ThreadStart(mainThreadLoop));
-            this.mainThread.IsBackground = true;    // Don't prevent application from dying if it wants to.
-            this.mainThread.Start();
-        }
-        private int Read(byte[] buffer, int offset, int count)
+        private static int Read(byte[] buffer, int offset, int count)
         {
             try
             {
@@ -73,16 +61,12 @@ namespace tinhat.EntropySources
                         }
                         if (pos < count)
                         {
-                            // We've exhausted our own pool.  Let's see if we can get more from the static instance
-                            byte[] moreBytes = staticThreadSchedulerRNG.GetAvailableBytes(count - pos);
-                            Array.Copy(moreBytes, 0, buffer, pos, moreBytes.Length);
-                            pos += moreBytes.Length;
-                            Array.Clear(moreBytes, 0, moreBytes.Length);
                             if (pos < count)
                             {
-                                // mainThread and staticThreadSchedulerRNG each produce approx 1 byte every 8ms
-                                // So sleep the number of bytes we need, *8ms, and /2
-                                Thread.Sleep((count-pos)*8/2);
+                                // TODO BUG there is a bug here, if you request large amounts of data, infinite sleep.
+                                // TODO BUG also, bad entropy if using mainthread & another thread, perhaps?
+                                //Thread.Sleep((count-pos)*8/2);
+                                Thread.Sleep(1);
                             }
                         }
                     }
@@ -94,7 +78,7 @@ namespace tinhat.EntropySources
                 poolFullARE.Set();
             }
         }
-        public byte[] GetAvailableBytes(int MaxLength)
+        public static byte[] GetAvailableBytes(int MaxLength)
         {
             lock (fifoStreamLock)
             {
@@ -153,7 +137,7 @@ namespace tinhat.EntropySources
             myFifoStream.Dispose();
             base.Dispose(disposing);
         }
-        private void mainThreadLoop()
+        private static void mainThreadLoop()
         {
             try
             {
@@ -163,11 +147,23 @@ namespace tinhat.EntropySources
                 // available.  So there's a balancing act happening here... Faster throughput versus faster response time...
                 // Divide by 8 seems to be a reasonable compromise between the two.
                 int byteCount = MaxPoolSize / 8;
-                while (disposed == FalseInt)
+                while (true)    // The only time we ever quit is on the terminate signal ... interrupt signal ... whatever.  OS kills my thread.
                 {
                     if (myFifoStream.Length < MaxPoolSize)
                     {
-                        byte[] newBytes = myThreadedSeedGeneratorRNG.GenerateSeed(byteCount, fast: false);
+                        var newBytes = new byte[byteCount];
+                        // By my measurements, estimated entropy returned by ThreadedSeedGenerator is approx 0.6 or 0.7 bits per bit
+                        // when fast=false, and 0.5 when fast=true.  Occasionally we see measurements between 0.4 and 0.5. So round this 
+                        // down to 0.125, and just generate 8x as much data as you need. And mix it.
+                        for (int i = 0; i < 8; i++)
+                        {
+                            byte[] maskBytes = myThreadedSeedGenerator.GenerateSeed(byteCount, fast: true);
+                            for (int j = 0; j < newBytes.Length; j++)
+                            {
+                                newBytes[j] ^= maskBytes[j];
+                            }
+                            Array.Clear(maskBytes, 0, maskBytes.Length);
+                        }
                         myFifoStream.Write(newBytes, 0, newBytes.Length);
                     }
                     else
@@ -180,10 +176,6 @@ namespace tinhat.EntropySources
             {
                 // If we got disposed while in the middle of doing stuff, we could throw any type of exception, and 
                 // I would want to suppress those.
-                if (disposed == FalseInt)
-                {
-                    throw;
-                }
             }
         }
         ~ThreadedSeedGeneratorRNG()

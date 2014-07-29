@@ -76,6 +76,13 @@ namespace tinhat
                 this.EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrappers));
             }
 
+            // Add the ThreadSchedulerRNG as entropy source, and SHA256 as hash algorithm
+            {
+                var RNG = new EntropySources.ThreadSchedulerRNG();
+                var HashWrapper = new SupportingClasses.HashAlgorithmWrapper(new Sha256Digest());
+                this.EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrapper));
+            }
+
             // If available, add EntropyFileRNG as entropy source
             {
                 EntropySources.EntropyFileRNG RNG = null;
