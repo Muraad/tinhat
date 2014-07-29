@@ -19,7 +19,9 @@ namespace WinFormsKeyboardInputPrompt
             DialogResult result = myForm.ShowDialog();
             if (result == DialogResult.OK)
             {
-                MessageBox.Show("Got string: '" + myForm.GetUserString() + "'");
+                string userString = myForm.GetUserString();
+                MessageBox.Show("Got string: '" + userString + "'");
+                tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(System.Text.Encoding.UTF8.GetBytes(userString));
             }
             else
             {
