@@ -45,9 +45,6 @@ namespace tinhat.EntropySources
         private static byte[] chunk;
         private static int chunkByteIndex = 0;
         private static int chunkBitIndex = 0;
-        private static int chunkBitCount = 0;  // Used to detect biased sampling
-        private const int minBitsSet = (int)(chunkSize * 8 * 0.2);  // If we randomly sample less than this many bits set to 1 in a chunk, discard sample
-        private const int maxBitsSet = (int)(chunkSize * 8 * 0.8);  // If we randomly sample more than this many bits set to 1 in a chunk, discard sample
 
         static ThreadSchedulerRNG()
         {
@@ -237,7 +234,6 @@ namespace tinhat.EntropySources
             if (bitByte == 1)
             {
                 chunk[chunkByteIndex]++;    // By incrementing, we are setting the lsb to 1.
-                chunkBitCount++;
             }
             chunkBitIndex++;
             if (chunkBitIndex > 7)
@@ -246,16 +242,8 @@ namespace tinhat.EntropySources
                 chunkByteIndex++;
                 if (chunkByteIndex >= chunkSize)
                 {
-                    if (chunkBitCount < minBitsSet || chunkBitCount > maxBitsSet)
-                    {
-                        // Then the sample is apparently biased.  Throw it out.
-                    }
-                    else
-                    {
-                        myFifoStream.Write(chunk, 0, chunkSize);
-                    }
+                    myFifoStream.Write(chunk, 0, chunkSize);
                     chunkByteIndex = 0;
-                    chunkBitCount = 0;
                 }
             }
         }
