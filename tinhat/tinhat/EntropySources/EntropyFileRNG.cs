@@ -19,6 +19,7 @@ namespace tinhat.EntropySources
     /// </summary>
     public sealed class EntropyFileRNG : RandomNumberGenerator
     {
+        // This is not meant to add any cryptographic value. It only helps us detect and/or thwart the most unsophisticated attackers and/or accidents
         private static byte[] HardCodedOptionalEntropy = new byte[] { 0x8A, 0x5E, 0x89, 0x1E, 0x56, 0x6C, 0x66, 0xFA, 0x6F, 0x62, 0x4A, 0x3B, 0x9E, 0x33, 0xC4, 0x12, 0x28, 0x92, 0x2F, 0x08, 0x9C, 0x51, 0x1F, 0x5B, 0x85, 0x86, 0x1A, 0x68, 0xEF, 0x43, 0x02 };
 
         /// <summary>
@@ -132,7 +133,7 @@ namespace tinhat.EntropySources
         /// Whenever you provide more seed bytes, entropy is always increased.  (Does not lose previous entropy bytes.)
         /// NOTICE: byte[] newSeed will be zero'd out before returning, for security reasons.
         /// </summary>
-        public EntropyFileRNG(byte[] newSeed = null, MixingAlgorithm mixingAlgorithm = MixingAlgorithm.SHA256, PrngAlgorithm prngAlgorithm = PrngAlgorithm.SHA512_512bit)
+        public EntropyFileRNG(byte[] newSeed = null, MixingAlgorithm mixingAlgorithm = MixingAlgorithm.SHA512, PrngAlgorithm prngAlgorithm = PrngAlgorithm.SHA512_512bit)
         {
             this.myMixingAlgorithm = mixingAlgorithm;
             this.myRNGAlgorithm = prngAlgorithm;
@@ -472,16 +473,19 @@ namespace tinhat.EntropySources
              */
             int myAlgorithmSize = myHashAlgorithm.HashSize / 8; // HashSize is measured in bits.  I want bytes.
             int seedPosition = 0;
+            var poolBlock = new byte[myAlgorithmSize];
             while (seedPosition < newSeed.Length)
             {
-                int byteCount;
-                if (seedPosition + myAlgorithmSize <= newSeed.Length)
-                {
-                    byteCount = myAlgorithmSize;
-                }
-                else
+                int byteCount = myAlgorithmSize;
+                if (newSeed.Length - seedPosition < byteCount)
                 {
                     byteCount = newSeed.Length - seedPosition;
+                }
+                if (pool.Length - poolPosition < byteCount)
+                {
+                    Array.Copy(pool, poolPosition, poolBlock, 0, pool.Length - poolPosition);
+                    Array.Copy(pool, 0, poolBlock, pool.Length - poolPosition, byteCount - (pool.Length - poolPosition));
+                    // If there are additional unused bytes inside poolBlock, I don't care.
                 }
                 // Check to see if the blocks are identical.  If they are, then don't use that chunk of the newSeed.
                 // This should realistically never happen, so the loop below is biased toward detecting non-identical
@@ -489,17 +493,15 @@ namespace tinhat.EntropySources
                 // identicality.
                 bool identical = true;
                 {
-                    int localPoolPosition = poolPosition;
+                    int poolBlockPosition = 0;
                     for (int localSeedPosition = seedPosition; localSeedPosition < seedPosition + byteCount; localSeedPosition++)
                     {
-                        if (newSeed[localSeedPosition] != pool[localPoolPosition])
+                        if (newSeed[localSeedPosition] != poolBlock[poolBlockPosition])
                         {
                             identical = false;
                             break;
                         }
-                        localPoolPosition++;
-                        if (localPoolPosition == pool.Length)
-                            localPoolPosition = 0;
+                        poolBlockPosition++;
                     }
                 }
                 if (identical)
@@ -511,8 +513,8 @@ namespace tinhat.EntropySources
                     // Hash a block from the newSeed
                     byte[] seedHash = myHashAlgorithm.ComputeHash(newSeed, seedPosition, byteCount);
                     seedPosition += byteCount;
-                    // Hash a block from the pool
-                    byte[] poolHash = myHashAlgorithm.ComputeHash(pool, poolPosition, byteCount);
+                    // Hash poolBlock
+                    byte[] poolHash = myHashAlgorithm.ComputeHash(poolBlock, 0, byteCount);
                     // Mix the result into the pool
                     for (int i = 0; i < byteCount; i++)
                     {
