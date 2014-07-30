@@ -19,25 +19,8 @@ namespace tinhat.EntropySources
     /// </summary>
     public sealed class EntropyFileRNG : RandomNumberGenerator
     {
+        // This is not meant to add any cryptographic value. It only helps us detect and/or thwart the most unsophisticated attackers and/or accidents
         private static byte[] HardCodedOptionalEntropy = new byte[] { 0x8A, 0x5E, 0x89, 0x1E, 0x56, 0x6C, 0x66, 0xFA, 0x6F, 0x62, 0x4A, 0x3B, 0x9E, 0x33, 0xC4, 0x12, 0x28, 0x92, 0x2F, 0x08, 0x9C, 0x51, 0x1F, 0x5B, 0x85, 0x86, 0x1A, 0x68, 0xEF, 0x43, 0x02 };
-
-        /// <summary>
-        /// When any instance of EntropyFileRNG adds seed material to the pool, it raises this event to signal all instances of EntropyFileRNG
-        /// to reseed themselves.  Those instances may, in turn, raise their public Reseeded events.
-        /// </summary>
-        private static event EventHandler Reseeded_Private;
-
-        /// <summary>
-        /// Mainly intended for TinHat internal use.  Whenever user adds seed material, notify all TinHatRandom instances that didn't
-        /// previously have an instance of EntropyFileRNG
-        /// </summary>
-        public static event EventHandler BecameAvailable;
-
-        /// <summary>
-        /// Mainly intended for TinHat internal use.  Whenever user adds seed material, all EntropyFileRNG instances will reseed themselves,
-        /// and this needs to be caught by TinHatRandom so they can raise EntropyIncreased, so TinHatURandom will then reseed itself.
-        /// </summary>
-        public event EventHandler Reseeded;
 
         /// <summary>
         /// 32
@@ -100,8 +83,6 @@ namespace tinhat.EntropySources
         /// </summary>
         private const int PoolSize = 3072;
 
-        private EventHandler EntropyFileRNG_Reseeded_Handler;
-
         /// <summary>
         /// Returns a single byte array containing all the bytes of all the provided arrays
         /// </summary>
@@ -132,15 +113,13 @@ namespace tinhat.EntropySources
         /// Whenever you provide more seed bytes, entropy is always increased.  (Does not lose previous entropy bytes.)
         /// NOTICE: byte[] newSeed will be zero'd out before returning, for security reasons.
         /// </summary>
-        public EntropyFileRNG(byte[] newSeed = null, MixingAlgorithm mixingAlgorithm = MixingAlgorithm.SHA256, PrngAlgorithm prngAlgorithm = PrngAlgorithm.SHA512_512bit)
+        public EntropyFileRNG(byte[] newSeed = null, MixingAlgorithm mixingAlgorithm = MixingAlgorithm.SHA512, PrngAlgorithm prngAlgorithm = PrngAlgorithm.SHA512_512bit)
         {
             this.myMixingAlgorithm = mixingAlgorithm;
             this.myRNGAlgorithm = prngAlgorithm;
 
             byte[] pool;
             Initialize(out pool, this.myMixingAlgorithm, newSeed);    // Clears the newSeed before returning
-            this.EntropyFileRNG_Reseeded_Handler = new EventHandler(EntropyFileRNG_Reseeded);
-            EntropyFileRNG.Reseeded_Private += this.EntropyFileRNG_Reseeded_Handler;
 
             CreateNewPRNG(pool);    // Clears pool contents before returning
         }
@@ -204,17 +183,6 @@ namespace tinhat.EntropySources
             finally
             {
                 Array.Clear(pool, 0, pool.Length);
-            }
-        }
-
-        private void EntropyFileRNG_Reseeded(object sender, EventArgs e)
-        {
-            byte[] pool;
-            Initialize(out pool, this.myMixingAlgorithm);    // Clears the newSeed before returning
-            CreateNewPRNG(pool);    // Clears pool contents before returning
-            if (this.Reseeded != null)
-            {
-                this.Reseeded(this, EventArgs.Empty);
             }
         }
 
@@ -291,17 +259,6 @@ namespace tinhat.EntropySources
                 {
                     randFileStream.Flush();
                     randFileStream.Close();
-                }
-                if (newSeed != null)
-                {
-                    if (EntropyFileRNG.Reseeded_Private != null)
-                    {
-                        EntropyFileRNG.Reseeded_Private(null, null);
-                    }
-                    if (EntropyFileRNG.BecameAvailable != null)
-                    {
-                        EntropyFileRNG.BecameAvailable(null, null);
-                    }
                 }
             }
             finally
@@ -415,7 +372,12 @@ namespace tinhat.EntropySources
 
         private static FileStream OpenRandFile()
         {
-            string fileName = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "/tinhat.rnd";
+            string parentDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (false == Directory.Exists(parentDir))
+            {
+                Directory.CreateDirectory(parentDir);
+            }
+            string fileName = parentDir + "/tinhat.rnd";
             const int maxTries = 10000;  // Fail this many times, throw exception.
             int numTries = 0;
             while (true)
@@ -472,16 +434,19 @@ namespace tinhat.EntropySources
              */
             int myAlgorithmSize = myHashAlgorithm.HashSize / 8; // HashSize is measured in bits.  I want bytes.
             int seedPosition = 0;
+            var poolBlock = new byte[myAlgorithmSize];
             while (seedPosition < newSeed.Length)
             {
-                int byteCount;
-                if (seedPosition + myAlgorithmSize <= newSeed.Length)
-                {
-                    byteCount = myAlgorithmSize;
-                }
-                else
+                int byteCount = myAlgorithmSize;
+                if (newSeed.Length - seedPosition < byteCount)
                 {
                     byteCount = newSeed.Length - seedPosition;
+                }
+                if (pool.Length - poolPosition < byteCount)
+                {
+                    Array.Copy(pool, poolPosition, poolBlock, 0, pool.Length - poolPosition);
+                    Array.Copy(pool, 0, poolBlock, pool.Length - poolPosition, byteCount - (pool.Length - poolPosition));
+                    // If there are additional unused bytes inside poolBlock, I don't care.
                 }
                 // Check to see if the blocks are identical.  If they are, then don't use that chunk of the newSeed.
                 // This should realistically never happen, so the loop below is biased toward detecting non-identical
@@ -489,17 +454,15 @@ namespace tinhat.EntropySources
                 // identicality.
                 bool identical = true;
                 {
-                    int localPoolPosition = poolPosition;
+                    int poolBlockPosition = 0;
                     for (int localSeedPosition = seedPosition; localSeedPosition < seedPosition + byteCount; localSeedPosition++)
                     {
-                        if (newSeed[localSeedPosition] != pool[localPoolPosition])
+                        if (newSeed[localSeedPosition] != poolBlock[poolBlockPosition])
                         {
                             identical = false;
                             break;
                         }
-                        localPoolPosition++;
-                        if (localPoolPosition == pool.Length)
-                            localPoolPosition = 0;
+                        poolBlockPosition++;
                     }
                 }
                 if (identical)
@@ -511,8 +474,8 @@ namespace tinhat.EntropySources
                     // Hash a block from the newSeed
                     byte[] seedHash = myHashAlgorithm.ComputeHash(newSeed, seedPosition, byteCount);
                     seedPosition += byteCount;
-                    // Hash a block from the pool
-                    byte[] poolHash = myHashAlgorithm.ComputeHash(pool, poolPosition, byteCount);
+                    // Hash poolBlock
+                    byte[] poolHash = myHashAlgorithm.ComputeHash(poolBlock, 0, byteCount);
                     // Mix the result into the pool
                     for (int i = 0; i < byteCount; i++)
                     {
@@ -551,7 +514,6 @@ namespace tinhat.EntropySources
             {
                 return;
             }
-            EntropyFileRNG.Reseeded_Private -= this.EntropyFileRNG_Reseeded_Handler;
             base.Dispose(disposing);
         }
         ~EntropyFileRNG()

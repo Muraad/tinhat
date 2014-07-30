@@ -41,13 +41,6 @@ namespace tinhat
     {
         private static TinHatRandom _StaticInstance = new TinHatRandom();
         public static TinHatRandom StaticInstance { get { return _StaticInstance; } }
-        private EventHandler EntropyFileRNG_Reseeded_Handler;
-        private EventHandler EntropyFileRNG_BecameAvailable_Handler;
-
-        /// <summary>
-        /// Event gets raised whenever new entropy source is added.  Mainly so TinHatURandom can reseed itself
-        /// </summary>
-        public event EventHandler EntropyIncreased;
 
         // Interlocked cannot handle bools.  So using int as if it were bool.
         private const int TrueInt = 1;
@@ -76,6 +69,13 @@ namespace tinhat
                 this.EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrappers));
             }
 
+            // Add the ThreadSchedulerRNG as entropy source, and SHA256 as hash algorithm
+            {
+                var RNG = new EntropySources.ThreadSchedulerRNG();
+                var HashWrapper = new SupportingClasses.HashAlgorithmWrapper(new Sha256Digest());
+                this.EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrapper));
+            }
+
             // If available, add EntropyFileRNG as entropy source
             {
                 EntropySources.EntropyFileRNG RNG = null;
@@ -85,20 +85,10 @@ namespace tinhat
                 }
                 catch
                 { }     // EntropyFileRNG thows exceptions if it hasn't been seeded yet, if it encouters corruption, etc.
-                if (RNG == null)
+                if (RNG != null)
                 {
-                    // Subscribe to its static BecameAvailable event, so we'll immediately start using one if it becomes available.
-                    this.EntropyFileRNG_BecameAvailable_Handler = new EventHandler(EntropyFileRNG_BecameAvailable);
-                    EntropySources.EntropyFileRNG.BecameAvailable += this.EntropyFileRNG_BecameAvailable_Handler;
-                }
-                else
-                {
-                    // Subscribe to its Reseeded event, so if it reseeds itself, we'll notify any TinHatURandom instances (or anyone else)
-                    // that are dependent on me
                     var HashWrapper = new SupportingClasses.HashAlgorithmWrapper(SHA256.Create());
                     this.EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrapper));
-                    this.EntropyFileRNG_Reseeded_Handler = new EventHandler(EntropyFileRNG_Reseeded);
-                    RNG.Reseeded += this.EntropyFileRNG_Reseeded_Handler;
                 }
             }
 
@@ -107,14 +97,6 @@ namespace tinhat
         public TinHatRandom(List<SupportingClasses.EntropyHasher> EntropyHashers)
         {
             this.EntropyHashers = EntropyHashers;
-            foreach (SupportingClasses.EntropyHasher hasher in EntropyHashers)
-            {
-                if (hasher.RNG is EntropySources.EntropyFileRNG)
-                {
-                    this.EntropyFileRNG_Reseeded_Handler = new EventHandler(EntropyFileRNG_Reseeded);
-                    ((EntropySources.EntropyFileRNG)(hasher.RNG)).Reseeded += this.EntropyFileRNG_Reseeded_Handler;
-                }
-            }
             CtorSanityCheck();
         }
 
@@ -159,35 +141,6 @@ namespace tinhat
                 }
             }
             HashLengthInBytes = HashLengthInBits / 8;
-        }
-
-        private void EntropyFileRNG_Reseeded(object sender, EventArgs e)
-        {
-            if (this.EntropyIncreased != null)
-            {
-                this.EntropyIncreased(this, EventArgs.Empty);
-            }
-        }
-
-        private void EntropyFileRNG_BecameAvailable(object sender, EventArgs e)
-        {
-            EntropySources.EntropyFileRNG RNG = new EntropySources.EntropyFileRNG();
-            var HashWrapper = new SupportingClasses.HashAlgorithmWrapper(SHA256.Create());
-            // We're going to modify the collection, so lock to make it thread-safe.
-            lock (EntropyHashers)
-            {
-                EntropyHashers.Add(new SupportingClasses.EntropyHasher(RNG, HashWrapper));
-                this.EntropyFileRNG_Reseeded_Handler = new EventHandler(EntropyFileRNG_Reseeded);
-                RNG.Reseeded += this.EntropyFileRNG_Reseeded_Handler;
-            }
-
-            // Now that we got one, we don't need to be subscribed to this event anymore
-            EntropySources.EntropyFileRNG.BecameAvailable -= this.EntropyFileRNG_BecameAvailable_Handler;
-
-            if (this.EntropyIncreased != null)
-            {
-                this.EntropyIncreased(this, EventArgs.Empty);
-            }
         }
 
         private byte[] CombineByteArrays(List<byte[]> byteArrays)
@@ -360,11 +313,6 @@ namespace tinhat
             {
                 return;
             }
-            try
-            {
-                EntropySources.EntropyFileRNG.BecameAvailable -= this.EntropyFileRNG_BecameAvailable_Handler;
-            }
-            catch { }
             if (EntropyHashers != null)
             {
                 List<SupportingClasses.EntropyHasher> myHashers = EntropyHashers;
@@ -373,14 +321,6 @@ namespace tinhat
                 {
                     foreach (SupportingClasses.EntropyHasher hasher in myHashers)
                     {
-                        if (hasher.RNG is EntropySources.EntropyFileRNG)
-                        {
-                            try
-                            {
-                                ((EntropySources.EntropyFileRNG)hasher.RNG).Reseeded -= this.EntropyFileRNG_Reseeded_Handler;
-                            }
-                            catch { }
-                        }
                         try
                         {
                             ((IDisposable)hasher).Dispose();

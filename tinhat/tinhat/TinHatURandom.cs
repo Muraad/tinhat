@@ -48,7 +48,6 @@ namespace tinhat
 
         private static TinHatURandom _StaticInstance = new TinHatURandom(TinHatRandom.StaticInstance);
         public static TinHatURandom StaticInstance { get { return _StaticInstance; } }
-        private EventHandler TinHatRandom_EntropyIncreased_Handler;
 
         private DigestRandomGenerator myPrng;
         private TinHatRandom myTinHatRandom;
@@ -115,12 +114,10 @@ namespace tinhat
         {
             this.myTinHatRandom = new TinHatRandom();
             this.myTinHatRandom_IsMineExclusively = true;
-            IDigest digest = new Sha256Digest();
+            IDigest digest = new Sha512Digest();
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
-            this.TinHatRandom_EntropyIncreased_Handler = new EventHandler(myTinHatRandom_EntropyIncreased);
-            this.myTinHatRandom.EntropyIncreased += this.TinHatRandom_EntropyIncreased_Handler;
             Reseed();
         }
         public TinHatURandom(IDigest digest)
@@ -130,8 +127,6 @@ namespace tinhat
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
-            this.TinHatRandom_EntropyIncreased_Handler = new EventHandler(myTinHatRandom_EntropyIncreased);
-            this.myTinHatRandom.EntropyIncreased += this.TinHatRandom_EntropyIncreased_Handler;
             Reseed();
         }
         public TinHatURandom(List<SupportingClasses.EntropyHasher> EntropyHashers, IDigest digest)
@@ -141,20 +136,16 @@ namespace tinhat
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
-            this.TinHatRandom_EntropyIncreased_Handler = new EventHandler(myTinHatRandom_EntropyIncreased);
-            this.myTinHatRandom.EntropyIncreased += this.TinHatRandom_EntropyIncreased_Handler;
             Reseed();
         }
         public TinHatURandom(TinHatRandom myTinHatRandom)
         {
             this.myTinHatRandom = myTinHatRandom;
             this.myTinHatRandom_IsMineExclusively = false;
-            IDigest digest = new Sha256Digest();
+            IDigest digest = new Sha512Digest();
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
-            this.TinHatRandom_EntropyIncreased_Handler = new EventHandler(myTinHatRandom_EntropyIncreased);
-            this.myTinHatRandom.EntropyIncreased += this.TinHatRandom_EntropyIncreased_Handler;
             Reseed();
         }
         public TinHatURandom(TinHatRandom myTinHatRandom, IDigest digest)
@@ -164,13 +155,6 @@ namespace tinhat
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
-            this.TinHatRandom_EntropyIncreased_Handler = new EventHandler(myTinHatRandom_EntropyIncreased);
-            this.myTinHatRandom.EntropyIncreased += this.TinHatRandom_EntropyIncreased_Handler;
-            Reseed();
-        }
-
-        void myTinHatRandom_EntropyIncreased(object sender, EventArgs e)
-        {
             Reseed();
         }
 
@@ -274,13 +258,9 @@ namespace tinhat
             if (myTinHatRandom_IsMineExclusively)
             {
                 // If myTinHatRandom is a private instance that I created, I no longer need it, and we can get rid of it.
-                myTinHatRandom.Dispose();
-            }
-            else
-            {
                 // If myTinHatRandom was given to me by user in constructor (for example, if I'm the TinHatURandom.StaticInstance)
-                // then I don't want to dispose of it, as somebody else might be referencing it.  I just want to unsubscribe from its events.
-                this.myTinHatRandom.EntropyIncreased -= this.TinHatRandom_EntropyIncreased_Handler;
+                // then I don't want to dispose of it, as somebody else might be referencing it.
+                myTinHatRandom.Dispose();
             }
             base.Dispose(disposing);
         }

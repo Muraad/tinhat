@@ -75,7 +75,7 @@ Tinhat Random is distributed under the MIT license.  Details here:  <https://raw
 
 ### Absolute Simplest Possible Usage ###
 
-This is an example of the absolute simplest possible usage.  It gets random bytes from the OS RNGCryptoServiceProvider, and ThreadedSeedGeneratorRNG.  So it *might* be better than the OS RNGCryptoServiceProvider all by itself.  For stronger usage, see below to include EntropyFileRNG.
+This is an example of the absolute simplest possible usage.  It gets random bytes from the OS RNGCryptoServiceProvider, ThreadSchedulerRNG, and ThreadedSeedGeneratorRNG.  So it *might* be better than the OS RNGCryptoServiceProvider all by itself.  For stronger usage, see below to include EntropyFileRNG.
 
     using tinhat;
     
@@ -94,6 +94,7 @@ This is an example of the absolute simplest possible usage.  It gets random byte
          * default constructors use:
          *     SystemRNGCryptoServiceProvider/SHA256, 
          *     ThreadedSeedGeneratorRNG/SHA256/RipeMD256Digest,
+         *     ThreadSchedulerRNG/SHA256,
          *     (if available) EntropyFileRNG/SHA256
          * and TinHatURandom by default uses Sha256Digest as the basis 
          * for DigestRandomGenerator PRNG
@@ -122,6 +123,7 @@ It is recommended to use StartEarly as soon as possible in your application, as 
          * default constructors use:
          *     SystemRNGCryptoServiceProvider/SHA256, 
          *     ThreadedSeedGeneratorRNG/SHA256/RipeMD256Digest,
+         *     ThreadSchedulerRNG/SHA256,
          *     (if available) EntropyFileRNG/SHA256
          * and TinHatURandom by default uses Sha256Digest as the basis 
          * for DigestRandomGenerator PRNG
@@ -137,26 +139,16 @@ It is recommended to use StartEarly as soon as possible in your application, as 
 
 This is a stronger usage model.  Most likely, this is the easiest, best, strongest, last word you'll ever need in strong crypto RNG. At least until the world changes, and this stuff gets updated.  ;-)  This is the recommended usage:
 
-* First, use WinFormsKeyboardInputPrompt (or something like it) (see "Tinhat Random Extras" above).  Collect something like 128 to 512 random characters from the user. Use `Encoding.UTF8.GetBytes(userString)` or anything else, to convert the string to a byte array.
-* Second, use WindowsFormsMouse (or something like it) (again, see "Tinhat Random Extras" above).  Collect something like 16 to 64 bytes from the user, as another byte array.
-* Optionally, collect other entropy sources - from the internet, or other systems, whatever you like, as additional byte arrays.  (For a list of internet random number servers, see [List of Random Number Servers](http://en.wikipedia.org/wiki/List_of_random_number_generators#Random_Number_Servers))
+* First, prompt the user for random keyboard input (for convenience you may use WinFormsKeyboardInputPrompt or something like it; see "Tinhat Random Extras" above).  Collect something like 128 to 512 random characters from the user. Use `Encoding.UTF8.GetBytes(userString)` or anything else, to convert the string to a byte array.  Add this seed material to EntropyFileRNG via `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
+* Second, prompt the user for random mouse input (for convenience you may use WindowsFormsMouse or something like it; again, see "Tinhat Random Extras" above).  Collect something like 16 to 64 bytes from the user, as another byte array, and again, add that seed material to EntropyFileRNG via `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
+* Optionally, collect other entropy sources - from the internet, or other systems, whatever you like, as additional byte arrays.  (For a list of internet random number servers, see [List of Random Number Servers](http://en.wikipedia.org/wiki/List_of_random_number_generators#Random_Number_Servers)).  Add each one of them to EntropyFileRNG via - you guessed it - `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
 * It doesn't matter if these seed bytes are dense high quality entropy.  Some non-random bytes mixed in there won't hurt anything, as long as the total entropy is sufficient for your purposes.  So for example, suppose the user was uncooperative and just held down a single key, repeated the letter "j" 256 times, that obviously provides essentially zero entropy from the user keyboard prompt, but as long as they actually moved their mouse around and didn't use a robot to eliminate mouse entropy, or as long as you collected random bytes from the internet  that were truly random and not compromised in any way, then you're going to have a good result as long as you got enough entropy from those other sources.
-
-Collect all those seed bytes into a single byte array. For your convenience, we have provided "ConcatenateByteArrays."  You may use something like this:
-
-    var allBytesList = new List<byte[]>();
-    allBytesList.Add(keyboardBytes);
-    allBytesList.Add(mouseBytes);
-    ...
-    byte[] allBytes = tinhat.EntropySources.EntropyFileRNG.ConcatenateByteArrays(allBytesList);
-
-And finally, use the big byte array to seed EntropyFileRNG:
-
-    tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(allBytes);
 
 Now that you've seeded the EntropyFileRNG once, in the future you can follow either of the "Simple Examples" above.  The mere existence of the EntropyFile will cause TinHatRandom and TinHatURandom to use it.  Your call to AddSeedMaterial() causes the new seed material to become available immediately in the TinHatRandom.StaticInstance and TinHatURandom.StaticInstance.
 
 You may add seed material as often as you like.  The reseed event immediately propagates to all TinHatRandom and TinHatURandom instances, causing them to reseed themselves, so there is a slight CPU penalty, and each reseed takes perhaps 100ms of disk time, but aside from that, reseeding often is probably a good thing.  You can reseed using bytes obtained from TinHatRandom, or using entropy that you gather from any other source.
+
+It is recommended to occasionally collect random bytes from TinHatRandom or TinHatURandom, and feed them back into `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
 
 ### Advanced Usage ###
 
@@ -165,6 +157,41 @@ If you want to manually specify the hash algorithms and entropy sources, please 
 For windows users, we recommend downloading the chm file (compressed html, displays natively in your windows help dialog by just double-clicking the chm file).  <https://github.com/rahvee/tinhat/raw/master/Documentation/tinhat.chm>
 
 The html when viewed in a web browser, doesn't render quite as nicely, but here it is, for anyone who doesn't want or can't use the chm.  <https://www.tinhatrandom.org/API>
+
+### RNG Comparisons ###
+
+In the TinHat Random source code, there is a Test project, which benchmarks and statistically analyzes several RNG algorithms.  Below are some results from a sample run.
+
+Highlights include:
+
+* The OS crypto API is obviously the fastest, and very strong, except perhaps if the OS or hardware manufacturers have backdoor'd it.  So it should always be used, but not exclusively.
+* The bouncy castle ThreadedSeedGenerator output is not very random.  About a half bit of entropy per bit of output.
+* The TinHat ThreadedSeedGeneratorRNG is a wrapper around bouncy castle ThreadedSeedGenerator, which collects 8x more data than necessary, and mixes it all together, to create one good output random stream.
+* TinHat ThreadSchedulerRNG produces good entropy, but rather slowly.
+* For nearly all purposes, it is recommended to seed EntropyFileRNG as described above, and then use TinHatURandom, because it strongly mixes all the other entropy sources together, produces good solid random output, and performs well.
+
+                    AlgorithmName | bits per bit | elapsed sec | effective rate
+                    ------------- | ------------ | ----------- | --------------
+         RNGCryptoServiceProvider |        0.994 |       0.000 |       infinity
+   SystemRNGCryptoServiceProvider |        0.994 |       0.001 |  13.90 MiB/sec
+                    TinHatURandom |        0.996 |       0.006 |   1.30 MiB/sec
+                     TinHatRandom |        0.996 |      15.709 |   519.48 B/sec
+         ThreadedSeedGeneratorRNG |        0.986 |       4.407 |   1.83 KiB/sec
+      ThreadedSeedGenerator(fast) |        0.515 |       0.013 | 318.00 KiB/sec
+      ThreadedSeedGenerator(slow) |        0.511 |       0.048 |  86.93 KiB/sec
+       ThreadSchedulerRNG (bit 0) |        0.995 |     127.453 |    63.96 B/sec
+       ThreadSchedulerRNG (bit 1) |        0.989 |     127.568 |    63.50 B/sec
+       ThreadSchedulerRNG (bit 2) |        0.997 |     124.813 |    65.43 B/sec
+       ThreadSchedulerRNG (bit 3) |        0.998 |     125.474 |    65.18 B/sec
+       ThreadSchedulerRNG (bit 4) |        0.997 |     125.788 |    64.95 B/sec
+       ThreadSchedulerRNG (bit 5) |        0.994 |     125.734 |    64.73 B/sec
+ ThreadSchedulerRNG (with mixing) |        1.000 |      32.051 |   255.59 B/sec
+                   EntropyFileRNG |        0.992 |       0.004 |   2.02 MiB/sec
+EntropyFileRNG (RIPEMD256_256bit) |        0.997 |       0.002 |   3.73 MiB/sec
+   EntropyFileRNG (SHA256_256bit) |        0.997 |       0.003 |   2.64 MiB/sec
+   EntropyFileRNG (SHA512_512bit) |        0.995 |       0.002 |   4.18 MiB/sec
+EntropyFileRNG (Whirlpool_512bit) |        0.995 |       0.022 | 370.63 KiB/sec
+                         AllZeros |        0.000 |       0.002 |     0.00 B/sec
 
 ## Support ##
 

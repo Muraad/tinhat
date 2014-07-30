@@ -21,6 +21,7 @@ namespace WindowsFormsMouse
             {
                 byte[] resultBytes = myForm.GetBytes();
                 MessageBox.Show("Got bytes: '" + BitConverter.ToString(resultBytes) + "'");
+                tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(resultBytes);
             }
             else
             {
