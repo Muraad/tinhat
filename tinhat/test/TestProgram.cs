@@ -139,10 +139,10 @@ namespace test
 
             result = new RandResult();
             result.AlgorithmName = "ThreadedSeedGenerator(fast)";
-            var myFastThreadedSeedGeneratorRNG = new Org.BouncyCastle.Crypto.Prng.ThreadedSeedGenerator();
+            var myThreadedSeedGenerator= new Org.BouncyCastle.Crypto.Prng.ThreadedSeedGenerator();
             Array.Clear(randBytes, 0, randBytesLength);
             before = DateTime.Now;
-            randBytes = myFastThreadedSeedGeneratorRNG.GenerateSeed(randBytesLength, fast: true);
+            randBytes = myThreadedSeedGenerator.GenerateSeed(randBytesLength, fast: true);
             after = DateTime.Now;
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
@@ -154,7 +154,7 @@ namespace test
             result.AlgorithmName = "ThreadedSeedGenerator(slow)";
             Array.Clear(randBytes, 0, randBytesLength);
             before = DateTime.Now;
-            randBytes = myFastThreadedSeedGeneratorRNG.GenerateSeed(randBytesLength, fast: false);
+            randBytes = myThreadedSeedGenerator.GenerateSeed(randBytesLength, fast: false);
             after = DateTime.Now;
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);

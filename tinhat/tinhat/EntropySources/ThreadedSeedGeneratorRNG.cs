@@ -63,9 +63,6 @@ namespace tinhat.EntropySources
                         {
                             if (pos < count)
                             {
-                                // TODO BUG there is a bug here, if you request large amounts of data, infinite sleep.
-                                // TODO BUG also, bad entropy if using mainthread & another thread, perhaps?
-                                //Thread.Sleep((count-pos)*8/2);
                                 Thread.Sleep(1);
                             }
                         }

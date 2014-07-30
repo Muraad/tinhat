@@ -23,24 +23,6 @@ namespace tinhat.EntropySources
         private static byte[] HardCodedOptionalEntropy = new byte[] { 0x8A, 0x5E, 0x89, 0x1E, 0x56, 0x6C, 0x66, 0xFA, 0x6F, 0x62, 0x4A, 0x3B, 0x9E, 0x33, 0xC4, 0x12, 0x28, 0x92, 0x2F, 0x08, 0x9C, 0x51, 0x1F, 0x5B, 0x85, 0x86, 0x1A, 0x68, 0xEF, 0x43, 0x02 };
 
         /// <summary>
-        /// When any instance of EntropyFileRNG adds seed material to the pool, it raises this event to signal all instances of EntropyFileRNG
-        /// to reseed themselves.  Those instances may, in turn, raise their public Reseeded events.
-        /// </summary>
-        private static event EventHandler Reseeded_Private;
-
-        /// <summary>
-        /// Mainly intended for TinHat internal use.  Whenever user adds seed material, notify all TinHatRandom instances that didn't
-        /// previously have an instance of EntropyFileRNG
-        /// </summary>
-        public static event EventHandler BecameAvailable;
-
-        /// <summary>
-        /// Mainly intended for TinHat internal use.  Whenever user adds seed material, all EntropyFileRNG instances will reseed themselves,
-        /// and this needs to be caught by TinHatRandom so they can raise EntropyIncreased, so TinHatURandom will then reseed itself.
-        /// </summary>
-        public event EventHandler Reseeded;
-
-        /// <summary>
         /// 32
         /// </summary>
         private const int HmacSha256Length = 32;
@@ -101,8 +83,6 @@ namespace tinhat.EntropySources
         /// </summary>
         private const int PoolSize = 3072;
 
-        private EventHandler EntropyFileRNG_Reseeded_Handler;
-
         /// <summary>
         /// Returns a single byte array containing all the bytes of all the provided arrays
         /// </summary>
@@ -140,8 +120,6 @@ namespace tinhat.EntropySources
 
             byte[] pool;
             Initialize(out pool, this.myMixingAlgorithm, newSeed);    // Clears the newSeed before returning
-            this.EntropyFileRNG_Reseeded_Handler = new EventHandler(EntropyFileRNG_Reseeded);
-            EntropyFileRNG.Reseeded_Private += this.EntropyFileRNG_Reseeded_Handler;
 
             CreateNewPRNG(pool);    // Clears pool contents before returning
         }
@@ -205,17 +183,6 @@ namespace tinhat.EntropySources
             finally
             {
                 Array.Clear(pool, 0, pool.Length);
-            }
-        }
-
-        private void EntropyFileRNG_Reseeded(object sender, EventArgs e)
-        {
-            byte[] pool;
-            Initialize(out pool, this.myMixingAlgorithm);    // Clears the newSeed before returning
-            CreateNewPRNG(pool);    // Clears pool contents before returning
-            if (this.Reseeded != null)
-            {
-                this.Reseeded(this, EventArgs.Empty);
             }
         }
 
@@ -292,17 +259,6 @@ namespace tinhat.EntropySources
                 {
                     randFileStream.Flush();
                     randFileStream.Close();
-                }
-                if (newSeed != null)
-                {
-                    if (EntropyFileRNG.Reseeded_Private != null)
-                    {
-                        EntropyFileRNG.Reseeded_Private(null, null);
-                    }
-                    if (EntropyFileRNG.BecameAvailable != null)
-                    {
-                        EntropyFileRNG.BecameAvailable(null, null);
-                    }
                 }
             }
             finally
@@ -553,7 +509,6 @@ namespace tinhat.EntropySources
             {
                 return;
             }
-            EntropyFileRNG.Reseeded_Private -= this.EntropyFileRNG_Reseeded_Handler;
             base.Dispose(disposing);
         }
         ~EntropyFileRNG()
