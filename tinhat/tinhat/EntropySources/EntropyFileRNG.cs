@@ -372,7 +372,12 @@ namespace tinhat.EntropySources
 
         private static FileStream OpenRandFile()
         {
-            string fileName = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "/tinhat.rnd";
+            string parentDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (false == Directory.Exists(parentDir))
+            {
+                Directory.CreateDirectory(parentDir);
+            }
+            string fileName = parentDir + "/tinhat.rnd";
             const int maxTries = 10000;  // Fail this many times, throw exception.
             int numTries = 0;
             while (true)
