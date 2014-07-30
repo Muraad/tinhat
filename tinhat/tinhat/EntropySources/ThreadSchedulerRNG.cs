@@ -150,8 +150,12 @@ namespace tinhat.EntropySources
                 return;
             }
             poolFullARE.Set();
+            /*
+             * TODO We need to think about the architecture here, such that we don't have problems disposing static things.
+             * 
             poolFullARE.Dispose();
             myFifoStream.Dispose();
+             */
             base.Dispose(disposing);
         }
         private static void mainThreadLoop()
@@ -227,6 +231,9 @@ namespace tinhat.EntropySources
             }
             catch
             {
+                // TODO think about changing architecture so we correctly avoid disposing static objects, and we gracefully terminate, etc
+                // It is not good to catch and swallow all exceptions.
+                // 
                 // If we got disposed while in the middle of doing stuff, we could throw any type of exception, and 
                 // I would want to suppress those.
             }
