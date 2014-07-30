@@ -100,6 +100,7 @@ namespace test
 
             result = new RandResult();
             result.AlgorithmName = "SystemRNGCryptoServiceProvider";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
             var mySystemRNGCryptoServiceProvider = new tinhat.EntropySources.SystemRNGCryptoServiceProvider();
             mySystemRNGCryptoServiceProvider.GetBytes(randBytes);
@@ -107,11 +108,12 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("SystemRNGCryptoServiceProvider " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
             result.AlgorithmName = "RNGCryptoServiceProvider";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
             using (var rng = new System.Security.Cryptography.RNGCryptoServiceProvider())
             {
@@ -121,11 +123,12 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("RNGCryptoServiceProvider " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
             result.AlgorithmName = "ThreadedSeedGeneratorRNG";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
             var myThreadedSeedGeneratorRNG = new tinhat.EntropySources.ThreadedSeedGeneratorRNG();
             myThreadedSeedGeneratorRNG.GetBytes(randBytes);
@@ -133,12 +136,13 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("ThreadedSeedGeneratorRNG " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             System.Threading.Thread.Sleep(3000);    // Should be enough time for its pool to fill up, so it won't slow down next:
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
             result.AlgorithmName = "ThreadedSeedGenerator(fast)";
+            System.Console.Write(result.AlgorithmName + " ");
             var myThreadedSeedGenerator= new Org.BouncyCastle.Crypto.Prng.ThreadedSeedGenerator();
             Array.Clear(randBytes, 0, randBytesLength);
             before = DateTime.Now;
@@ -147,11 +151,12 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("ThreadedSeedGenerator(fast) " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
             result.AlgorithmName = "ThreadedSeedGenerator(slow)";
+            System.Console.Write(result.AlgorithmName + " ");
             Array.Clear(randBytes, 0, randBytesLength);
             before = DateTime.Now;
             randBytes = myThreadedSeedGenerator.GenerateSeed(randBytesLength, fast: false);
@@ -159,7 +164,7 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("ThreadedSeedGenerator(slow) " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             const int numResults = 6;
@@ -171,21 +176,23 @@ namespace test
                 ThreadSchedulerResultsBytes[i] = new byte[randBytesLength];
             }
             ThreadSchedulerResults[numResults].AlgorithmName = "ThreadSchedulerRNG (with mixing)";
+            System.Console.Write(ThreadSchedulerResults[numResults].AlgorithmName + " ");
             before = DateTime.Now;
             var myThreadSchedulerRng = new tinhat.EntropySources.ThreadSchedulerRNG();
             myThreadSchedulerRng.GetBytes(ThreadSchedulerResultsBytes[numResults]);
             after = DateTime.Now;
-            System.Console.WriteLine("ThreadSchedulerRNG (with mixing) " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             ThreadSchedulerResults[numResults].TimeSpan = after - before;
             tinhat.EntropySources.ThreadSchedulerRNG.UseMixingFunction = false;
             for (int bitPosition = 0; bitPosition < numResults; bitPosition++)
             {
                 ThreadSchedulerResults[bitPosition].AlgorithmName = "ThreadSchedulerRNG (bit " + bitPosition.ToString() + ")";
+                System.Console.Write(ThreadSchedulerResults[bitPosition].AlgorithmName + " ");
                 tinhat.EntropySources.ThreadSchedulerRNG.UseBitPosition = bitPosition;
                 before = DateTime.Now;
                 myThreadSchedulerRng.GetBytes(ThreadSchedulerResultsBytes[bitPosition]);
                 after = DateTime.Now;
-                System.Console.WriteLine(ThreadSchedulerResults[bitPosition].AlgorithmName + " " + (after - before).ToString());
+                System.Console.WriteLine((after - before).ToString());
                 ThreadSchedulerResults[bitPosition].TimeSpan = after - before;
             }
             tinhat.EntropySources.ThreadSchedulerRNG.UseMixingFunction = true;
@@ -199,6 +206,7 @@ namespace test
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG";
+            System.Console.Write(result.AlgorithmName + " ");
             var myEntropyFileRNG = new tinhat.EntropySources.EntropyFileRNG();
             before = DateTime.Now;
             myEntropyFileRNG.GetBytes(randBytes);
@@ -206,10 +214,11 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("EntropyFileRNG " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG (RIPEMD256_256bit)";
+            System.Console.Write(result.AlgorithmName + " ");
             myEntropyFileRNG = new tinhat.EntropySources.EntropyFileRNG(prngAlgorithm: tinhat.EntropySources.EntropyFileRNG.PrngAlgorithm.RIPEMD256_256bit);
             before = DateTime.Now;
             myEntropyFileRNG.GetBytes(randBytes);
@@ -217,10 +226,11 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("EntropyFileRNG  (RIPEMD256_256bit)" + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG (SHA256_256bit)";
+            System.Console.Write(result.AlgorithmName + " ");
             myEntropyFileRNG = new tinhat.EntropySources.EntropyFileRNG(prngAlgorithm: tinhat.EntropySources.EntropyFileRNG.PrngAlgorithm.SHA256_256bit);
             before = DateTime.Now;
             myEntropyFileRNG.GetBytes(randBytes);
@@ -228,10 +238,11 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("EntropyFileRNG  (SHA256_256bit)" + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG (SHA512_512bit)";
+            System.Console.Write(result.AlgorithmName + " ");
             myEntropyFileRNG = new tinhat.EntropySources.EntropyFileRNG(prngAlgorithm: tinhat.EntropySources.EntropyFileRNG.PrngAlgorithm.SHA512_512bit);
             before = DateTime.Now;
             myEntropyFileRNG.GetBytes(randBytes);
@@ -239,10 +250,11 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("EntropyFileRNG  (SHA512_512bit)" + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG (Whirlpool_512bit)";
+            System.Console.Write(result.AlgorithmName + " ");
             myEntropyFileRNG = new tinhat.EntropySources.EntropyFileRNG(prngAlgorithm: tinhat.EntropySources.EntropyFileRNG.PrngAlgorithm.Whirlpool_512bit);
             before = DateTime.Now;
             myEntropyFileRNG.GetBytes(randBytes);
@@ -250,7 +262,7 @@ namespace test
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("EntropyFileRNG  (Whirlpool_512bit)" + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
 
             // I want to test each of the ThreadedSeedGeneratorRNG and ThreadSchedulerRNG prior to doing TinHatRandom
             // or TinHatURandom, because otherwise, TinHatRandom will create static instances of them, which race, etc.
@@ -258,25 +270,27 @@ namespace test
 
             result = new RandResult();
             result.AlgorithmName = "TinHatRandom";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
             TinHatRandom.StaticInstance.GetBytes(randBytes);
             after = DateTime.Now;
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("TinHatRandom " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             System.Threading.Thread.Sleep(15000);    // Should be enough time for its pool to fill up, so it won't slow down next:
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
             result.AlgorithmName = "TinHatURandom";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
             TinHatURandom.StaticInstance.GetBytes(randBytes);
             after = DateTime.Now;
             result.TimeSpan = after - before;
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
-            System.Console.WriteLine("TinHatURandom " + (after - before).ToString());
+            System.Console.WriteLine((after - before).ToString());
             System.Threading.Thread.Sleep(15000);    // Should be enough time for its pool to fill up, so it won't slow down next:
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 

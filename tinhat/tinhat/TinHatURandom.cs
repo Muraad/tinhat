@@ -114,7 +114,7 @@ namespace tinhat
         {
             this.myTinHatRandom = new TinHatRandom();
             this.myTinHatRandom_IsMineExclusively = true;
-            IDigest digest = new Sha256Digest();
+            IDigest digest = new Sha512Digest();
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
@@ -142,7 +142,7 @@ namespace tinhat
         {
             this.myTinHatRandom = myTinHatRandom;
             this.myTinHatRandom_IsMineExclusively = false;
-            IDigest digest = new Sha256Digest();
+            IDigest digest = new Sha512Digest();
             this.myPrng = new DigestRandomGenerator(digest);
             this.digestSize = digest.GetDigestSize();
             this.SeedSize = this.digestSize;
