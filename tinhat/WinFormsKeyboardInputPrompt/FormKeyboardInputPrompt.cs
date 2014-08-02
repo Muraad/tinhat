@@ -32,7 +32,11 @@ namespace WinFormsKeyboardInputPrompt
         private void UpdateLabelPleaseEnterPrompt()
         {
             string remainingCharsCountString;
+#if WITHLZMA
             int estimatedBits = KeyboardEntropyEstimator.EstimateBits(textBoxUserChars.Text);
+#else
+            int estimatedBits = textBoxUserChars.Text.Length;
+#endif
             if (estimatedBits >= requestedEntropyBitCount)
             {
                 buttonOK.Enabled = true;
