@@ -39,15 +39,16 @@ namespace WinFormsKeyboardInputPrompt
              *     >=6026    : 17.341 + 0.0029304 * Length
              *     
              * This is the envelope of the output size, for varying lengths of input obtained from urandom
-             *      2-9     : 4.875 + 1.125 * Length
-             *      9-38    : 5.086 + 1.103 * Length
-             *      39-50   : 5.85 + 1.083 * Length
-             *      51-64   : 6.456 + 1.071 * Length
-             *      65-96   : 6.96 + 1.063 * Length
-             *      97-143  : 8.851 + 1.043 * Length
-             *      144-204 : 11.084 + 1.029 * Length
-             *      205-402 : 11.95 + 1.025 * Length
-             *      >=403   : 13.453 + 1.013 * Length
+             *     1-8       : 4.875 + 1.125 * Length
+             *     9-37      : 5.068965512 + 1.103448276 * Length
+             *     38-49     : 5.8333333 + 1.08333333 * Length
+             *     50-63     : 6.428571429 + 1.071428571 * Length
+             *     64-95     : 7 + 1.0625 * Length
+             *     96-142    : 8.914893617 + 1.042553191 * Length
+             *     143-168   : 9.5 + 1.038461538 * Length
+             *     169-203   : 11.17142857 + 1.028571429 * Length
+             *     204-401   : 11.84848485 + 1.025252525 * Length
+             *     >=402     : 16.94700013 + 1.012569651 * Length
             */
             int Length = UserString.Length;
             double lowerBound;
@@ -76,22 +77,24 @@ namespace WinFormsKeyboardInputPrompt
             // Set upperBound
             if (Length<9)
                 upperBound = 4.875 + 1.125 * Length;
-            else if (Length<39)
-                upperBound = 5.086 + 1.103 * Length;
-            else if (Length<51)
-                upperBound = 5.85 + 1.083 * Length;
-            else if (Length<65)
-                upperBound = 6.456 + 1.071 * Length;
-            else if (Length<97)
-                upperBound = 6.96 + 1.063 * Length;
-            else if (Length<144)
-                upperBound = 8.851 + 1.043 * Length;
-            else if (Length<205)
-                upperBound = 11.084 + 1.029 * Length;
-            else if (Length<403)
-                upperBound = 11.95 + 1.025 * Length;
+            else if (Length<38)
+                upperBound = 5.068965512 + 1.103448276 * Length;
+            else if (Length<50)
+                upperBound = 5.8333333 + 1.08333333 * Length;
+            else if (Length<64)
+                upperBound = 6.428571429 + 1.071428571 * Length;
+            else if (Length<96)
+                upperBound = 7 + 1.0625 * Length;
+            else if (Length<143)
+                upperBound = 8.914893617 + 1.042553191 * Length;
+            else if (Length<169)
+                upperBound = 9.5 + 1.038461538 * Length;
+            else if (Length<204)
+                upperBound = 11.17142857 + 1.028571429 * Length;
+            else if (Length<402)
+                upperBound = 11.84848485 + 1.025252525 * Length;
             else
-                upperBound = 13.453 + 1.013 * Length;
+                upperBound = 16.94700013 + 1.012569651 * Length;
 
             double compressionRatio;
             using (var outStream = new MemoryStream())
