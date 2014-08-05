@@ -58,6 +58,21 @@ namespace tinhat.EntropySources
             SHA512 = 5
         }
 
+        private class SeedMaterialAddedEventArgs : EventArgs
+        {
+            public byte[] NewSeed;
+        }
+        
+        /// <summary>
+        /// Static instance raises this event when seed material is added
+        /// </summary>
+        private static event EventHandler<SeedMaterialAddedEventArgs> SeedMaterialAdded;
+
+        /// <summary>
+        /// Instances use this private field to keep track of their subscriptions to the static SeedMaterialAdded event
+        /// </summary>
+        private EventHandler<SeedMaterialAddedEventArgs> mySeedMaterialAdded_Handler;
+
         // Interlocked cannot handle bools.  So using int as if it were bool.
         private const int TrueInt = 1;
         private const int FalseInt = 0;
@@ -122,6 +137,14 @@ namespace tinhat.EntropySources
             Initialize(out pool, this.myMixingAlgorithm, newSeed);    // Clears the newSeed before returning
 
             CreateNewPRNG(pool);    // Clears pool contents before returning
+
+            this.mySeedMaterialAdded_Handler = new EventHandler<SeedMaterialAddedEventArgs>(AddedSeedMaterialMethod);
+            SeedMaterialAdded += this.mySeedMaterialAdded_Handler;
+        }
+
+        private void AddedSeedMaterialMethod (object sender, SeedMaterialAddedEventArgs args)
+        {
+            this.myRNG.AddSeedMaterial(args.NewSeed);
         }
 
         /// <summary>
@@ -193,6 +216,25 @@ namespace tinhat.EntropySources
         {
             byte[] pool;
             Initialize(out pool, mixingAlgorithm, newSeed);    // Clears the newSeed before returning
+            try
+            {
+                if (SeedMaterialAdded != null)
+                {
+                    SeedMaterialAdded(null, new SeedMaterialAddedEventArgs() { NewSeed = pool });
+                }
+            }
+            catch (Exception e)
+            {
+                // This should never occur, but I've seen it happen before, that a race condition occurs *just* in between
+                // the checking of SeedMaterialAdded == null, and calling the method, that an instance unsubscribes, and then
+                // it throws an exception.
+                // So in general, if any such exception occurs, swallow it and ignore it.  But if we happen to be debugging,
+                // then have the debugger look at it.
+                if (System.Diagnostics.Debugger.IsAttached)
+                {
+                    System.Diagnostics.Debugger.Break();
+                }
+            }
             Array.Clear(pool, 0, pool.Length);
         }
 
@@ -229,7 +271,7 @@ namespace tinhat.EntropySources
             HashAlgorithm myHashAlgorithm = CreateMyHashAlgorithm(mixingAlgorithm);
             try
             {
-                FileStream randFileStream = OpenRandFile();
+                FileStream randFileStream = OpenRandFile(); // retries as much as 10,000 times
                 try
                 {
                     pool = new byte[PoolSize];
@@ -370,6 +412,7 @@ namespace tinhat.EntropySources
             }
         }
 
+        private static object OpenRandFileLockObj = new object();
         private static FileStream OpenRandFile()
         {
             string parentDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -380,24 +423,27 @@ namespace tinhat.EntropySources
             string fileName = parentDir + "/tinhat.rnd";
             const int maxTries = 10000;  // Fail this many times, throw exception.
             int numTries = 0;
-            while (true)
+            lock (OpenRandFileLockObj)  // Absolute locking is guaranteed by the FileShare.None, but we might as well increase efficiency a bit by using a lock
             {
-                try
+                while (true)
                 {
-                    return new FileStream(fileName, FileMode.OpenOrCreate , FileAccess.ReadWrite, FileShare.None);
-                }
-                catch
-                {
-                    // Most likely some other thread got there before us, has the file open, so sleep momentarily and try again.
-                    // We do this silly polling and retrying, instead of using something like Mutex, because Mutex
-                    // is poorly supported cross-platform.  But opening file in exclusive read/write mode, and
-                    // polling, is expected to be quite reliable and compatible.
-                    Thread.Sleep(1);
-                }
-                numTries++;
-                if (numTries > maxTries)
-                {
-                    throw new CryptographicException("EntropyFileRNG too many failures trying to open rand file");
+                    try
+                    {
+                        return new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                    }
+                    catch
+                    {
+                        // Most likely some other thread got there before us, has the file open, so sleep momentarily and try again.
+                        // We do this silly polling and retrying, instead of using something like Mutex, because Mutex
+                        // is poorly supported cross-platform.  But opening file in exclusive read/write mode, and
+                        // polling, is expected to be quite reliable and compatible.
+                        Thread.Sleep(1);
+                    }
+                    numTries++;
+                    if (numTries > maxTries)
+                    {
+                        throw new CryptographicException("EntropyFileRNG too many failures trying to open rand file");
+                    }
                 }
             }
         }
@@ -514,6 +560,7 @@ namespace tinhat.EntropySources
             {
                 return;
             }
+            SeedMaterialAdded -= this.mySeedMaterialAdded_Handler;
             base.Dispose(disposing);
         }
         ~EntropyFileRNG()

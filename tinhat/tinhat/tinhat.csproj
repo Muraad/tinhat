@@ -47,7 +47,6 @@
     <Compile Include="EntropySources\SystemRNGCryptoServiceProvider.cs" />
     <Compile Include="EntropySources\ThreadedSeedGeneratorRNG.cs" />
     <Compile Include="EntropySources\ThreadSchedulerRNG.cs" />
-    <Compile Include="EntropySources\UserStringRNG.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="StartEarly.cs" />
     <Compile Include="SupportingClasses\EntropyHasher.cs" />
