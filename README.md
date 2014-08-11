@@ -8,13 +8,9 @@ tinhat guarantees not to reduce the strength of your crypto random.  See below f
 
 ## What is tinhat? ##
 
-First, let's define a few terms.  In cryptography, we assume everything in the universe is actually deterministic.  The roll of dice, flip of a coin, shuffling of cards, and even radioactive decay and unpredictable quantum activities, all produce deterministic results from their respective physical processes.  In cryptography, "entropy" is the measure of unknown-ness with respect to another party.  Even if a coin flip is 100% deterministic, if I flip a coin and don't let you see it, I have gained 1 bit worth of entropy relative to you.  I can measure mouse movements on the screen, measure hard drive timings and network interrupts, and despite the fact that these are 100% deterministic, they provide effective entropy relative to any attacker who isn't also measuring the same sources, or exerting influence over them.
+Tinhat Random distrustfully takes a bunch of supposed random sources, and mixes them in such a way to produce output which is no less random than the cumulative randomness of *all* the combined inputs, and yet any input being non-random or even actively malicious cannot undermine the cryptographic strength of the Tinhat Random output.
 
-A cryptographically strong random source is simple:  It's anything which is indistinguishable from true random, because any and all would-be attackers do not have access to its entropy sources.
-
-This leads us to a problem:  You can't flip a coin very fast.  Even in a computer, if you sample a whole bunch of entropy sources, the rate that you gain entropy is rather slow.  Pseudo random generators (PRNG's) are important, but equally important is knowing how and when to use them.  A PRNG uses cryptographic primitives (usually hash functions) to stretch a small amount of entropy into a larger amount of output data, exploiting the design characteristics of the primitives to produce output that remains indistinguishable from true random.  This fundamentally requires the implementation of the PRNG to remain ideal, free of any known flaws; but, as time goes on, weaknesses of the primitives are bound to be discovered.  It is recommended to use pure entropy for generation of long-lived keys, and to use PRNG output for  frequent operations such as short-lived keys and ephemeral key exchanges.
-
-In tinhat, we provide two main classes.  The first main class, "TinHatRandom" draws entropy from available entropy sources, and mixes them together as described below, to eliminate or reduce the risk of any individual entropy source failing (being predictable by an attacker.)  TinHatRandom will never return more bytes than what it collected from entropy sources, which means it can be slow.  The second main class, "TinHatURandom" uses a PRNG, which is seeded by TinHatRandom, and has configurable thresholds to re-seed, and even refuse to return more bytes when drained too rapidly.  Both are designed to be cryptographically strong random, but TinHatRandom is slow while TinHatURandom is fast, and the cryptographic strength of TinHatURandom is dependent on the integrity of its internal PRNG.
+Tinhat Random provides two main classes.  The first one, "TinHatRandom" draws entropy from available entropy sources, and mixes them together as described below, to eliminate or reduce the risk of any individual entropy source failing (being predictable or even controlled by an adversary.)  TinHatRandom will never return more bytes than what it collected from entropy sources, which means it can be slow (typically a few hundred bytes per second).  The second main class, "TinHatURandom" uses a PRNG, which is seeded and regularly reseeded by TinHatRandom.  As long as no weaknesses exist in the underlying PRNG, the output of TinHatURandom is pure random just as the output of TinHatRandom, yet TinHatURandom is very fast - typically generating several MB per second.
 
 ## Architecture in Detail ##
 
@@ -61,9 +57,11 @@ Tinhat source code is available at <https://github.com/rahvee/tinhat>
 
 ## Download (Tinhat Random Extras) ##
 
-We have sample projects to gather user keyboard input, user mouse input, etc.  But since you probably want to customize the icon in the corner, and stuff like that, it's probably best for you to actually download the source and add it to your project, customize it yourself.  So we don't distribute it as a NuGet package - which probably wouldn't be useful to you.
+* WindowsFormsMouse provides an easy to use entropy gathering interface, to collect randomness from user mouse movements in windows.
+* WinFormsKeyboardInputPrompt (With LZMA) prompts for user keyboard random input.  LZMA is used to attempt removing repeated patterns such as asdfasdfasdf or jjjjjjj, but LZMA requires acceptance of [the CompressSharp MS-Pl license](http://sharpcompress.codeplex.com/license).
+* WinFormsKeyboardInputPrompt (Without LZMA) is exactly the same as above, but blindly assumes 1 bit of entropy per character entered by the user.
 
-Instead, please see the Tinhat source code at <https://github.com/rahvee/tinhat> and use the WindowsFormsMouse project and WindowsFormsKeyboardInputPrompt project.
+If you use these projects, it is assumed you'll want to update icons or customize slightly, so they are not distributed in binary form.  Please checkout the Tinhat source code at <https://github.com/rahvee/tinhat>.
 
 We will be adding more soon (WPF, Mac OSX, GTK (linux)).  Right now, it's only winforms.
 
@@ -139,16 +137,13 @@ It is recommended to use StartEarly as soon as possible in your application, as 
 
 This is a stronger usage model.  Most likely, this is the easiest, best, strongest, last word you'll ever need in strong crypto RNG. At least until the world changes, and this stuff gets updated.  ;-)  This is the recommended usage:
 
-* First, prompt the user for random keyboard input (for convenience you may use WinFormsKeyboardInputPrompt or something like it; see "Tinhat Random Extras" above).  Collect something like 128 to 512 random characters from the user. Use `Encoding.UTF8.GetBytes(userString)` or anything else, to convert the string to a byte array.  Add this seed material to EntropyFileRNG via `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
-* Second, prompt the user for random mouse input (for convenience you may use WindowsFormsMouse or something like it; again, see "Tinhat Random Extras" above).  Collect something like 16 to 64 bytes from the user, as another byte array, and again, add that seed material to EntropyFileRNG via `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
-* Optionally, collect other entropy sources - from the internet, or other systems, whatever you like, as additional byte arrays.  (For a list of internet random number servers, see [List of Random Number Servers](http://en.wikipedia.org/wiki/List_of_random_number_generators#Random_Number_Servers)).  Add each one of them to EntropyFileRNG via - you guessed it - `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
+* Using any combination of WindowsFormsMouse, WinFormsKeyboardInputPrompt, and other entropy sources such as [List of Random Number Servers](http://en.wikipedia.org/wiki/List_of_random_number_generators#Random_Number_Servers), add seed bytes to EntropyFileRNG via `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
+* It is recommended to add at least 32 bytes from each available entropy source, using as many different entropy sources as available.
 * It doesn't matter if these seed bytes are dense high quality entropy.  Some non-random bytes mixed in there won't hurt anything, as long as the total entropy is sufficient for your purposes.  So for example, suppose the user was uncooperative and just held down a single key, repeated the letter "j" 256 times, that obviously provides essentially zero entropy from the user keyboard prompt, but as long as they actually moved their mouse around and didn't use a robot to eliminate mouse entropy, or as long as you collected random bytes from the internet  that were truly random and not compromised in any way, then you're going to have a good result as long as you got enough entropy from those other sources.
 
 Now that you've seeded the EntropyFileRNG once, in the future you can follow either of the "Simple Examples" above.  The mere existence of the EntropyFile will cause TinHatRandom and TinHatURandom to use it.  Your call to AddSeedMaterial() causes the new seed material to become available immediately in the TinHatRandom.StaticInstance and TinHatURandom.StaticInstance.
 
 You may add seed material as often as you like.  The reseed event immediately propagates to all TinHatRandom and TinHatURandom instances, causing them to reseed themselves, so there is a slight CPU penalty, and each reseed takes perhaps 100ms of disk time, but aside from that, reseeding often is probably a good thing.  You can reseed using bytes obtained from TinHatRandom, or using entropy that you gather from any other source.
-
-It is recommended to occasionally collect random bytes from TinHatRandom or TinHatURandom, and feed them back into `tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randomBytes)`
 
 ### Advanced Usage ###
 
@@ -165,33 +160,76 @@ In the TinHat Random source code, there is a Test project, which benchmarks and 
 Highlights include:
 
 * The OS crypto API is obviously the fastest, and very strong, except perhaps if the OS or hardware manufacturers have backdoor'd it.  So it should always be used, but not exclusively.
-* The bouncy castle ThreadedSeedGenerator output is not very random.  About a half bit of entropy per bit of output.
-* The TinHat ThreadedSeedGeneratorRNG is a wrapper around bouncy castle ThreadedSeedGenerator, which collects 8x more data than necessary, and mixes it all together, to create one good output random stream.
-* TinHat ThreadSchedulerRNG produces good entropy, but rather slowly.
+* The bouncy castle ThreadedSeedGenerator output is not very random.
+* The TinHat ThreadedSeedGeneratorRNG is a wrapper around bouncy castle ThreadedSeedGenerator, which collects 8x more data than necessary, and mixes it all together, to create hopefully one good output random stream.
+* TinHat ThreadSchedulerRNG seems to produce good entropy, but rather slowly.
 * For nearly all purposes, it is recommended to seed EntropyFileRNG as described above, and then use TinHatURandom, because it strongly mixes all the other entropy sources together, produces good solid random output, and performs well.
 
-                    AlgorithmName | bits per bit | elapsed sec | effective rate
-                    ------------- | ------------ | ----------- | --------------
-         RNGCryptoServiceProvider |        0.994 |       0.000 |       infinity
-   SystemRNGCryptoServiceProvider |        0.994 |       0.001 |  13.90 MiB/sec
-                    TinHatURandom |        0.996 |       0.006 |   1.30 MiB/sec
-                     TinHatRandom |        0.996 |      15.709 |   519.48 B/sec
-         ThreadedSeedGeneratorRNG |        0.986 |       4.407 |   1.83 KiB/sec
-      ThreadedSeedGenerator(fast) |        0.515 |       0.013 | 318.00 KiB/sec
-      ThreadedSeedGenerator(slow) |        0.511 |       0.048 |  86.93 KiB/sec
-       ThreadSchedulerRNG (bit 0) |        0.995 |     127.453 |    63.96 B/sec
-       ThreadSchedulerRNG (bit 1) |        0.989 |     127.568 |    63.50 B/sec
-       ThreadSchedulerRNG (bit 2) |        0.997 |     124.813 |    65.43 B/sec
-       ThreadSchedulerRNG (bit 3) |        0.998 |     125.474 |    65.18 B/sec
-       ThreadSchedulerRNG (bit 4) |        0.997 |     125.788 |    64.95 B/sec
-       ThreadSchedulerRNG (bit 5) |        0.994 |     125.734 |    64.73 B/sec
- ThreadSchedulerRNG (with mixing) |        1.000 |      32.051 |   255.59 B/sec
-                   EntropyFileRNG |        0.992 |       0.004 |   2.02 MiB/sec
-EntropyFileRNG (RIPEMD256_256bit) |        0.997 |       0.002 |   3.73 MiB/sec
-   EntropyFileRNG (SHA256_256bit) |        0.997 |       0.003 |   2.64 MiB/sec
-   EntropyFileRNG (SHA512_512bit) |        0.995 |       0.002 |   4.18 MiB/sec
-EntropyFileRNG (Whirlpool_512bit) |        0.995 |       0.022 | 370.63 KiB/sec
-                         AllZeros |        0.000 |       0.002 |     0.00 B/sec
+Sample Performance (Windows 8.1, Intel Core i5)
+
+    |                    AlgorithmName | bits per bit | elapsed sec | effective rate|
+    |----------------------------------|--------------|-------------|---------------|
+    |                    TinHatURandom |        0.999 |       0.007 |   1.15 MiB/sec|
+    |                     TinHatRandom |        0.999 |      67.315 |   121.61 B/sec|
+    |   SystemRNGCryptoServiceProvider |        0.999 |       0.000 |       infinity|
+    |         RNGCryptoServiceProvider |        0.999 |       0.000 |       infinity|
+    |         ThreadedSeedGeneratorRNG |        0.939 |       2.893 |   2.66 KiB/sec|
+    |      ThreadedSeedGenerator(fast) |        0.421 |       0.021 | 161.17 KiB/sec|
+    |      ThreadedSeedGenerator(slow) |        0.408 |       0.005 | 708.79 KiB/sec|
+    |               ThreadSchedulerRNG |        0.999 |     127.735 |    64.09 B/sec|
+    |                    ticks bit # 0 |        0.994 |     133.637 |    60.91 B/sec|
+    |                    ticks bit # 1 |        0.989 |     133.637 |    60.60 B/sec|
+    |                    ticks bit # 2 |        0.999 |     133.637 |    61.23 B/sec|
+    |                    ticks bit # 3 |        0.999 |     133.637 |    61.24 B/sec|
+    |                    ticks bit # 4 |        0.999 |     133.637 |    61.23 B/sec|
+    |                    ticks bit # 5 |        0.999 |     133.637 |    61.22 B/sec|
+    |                    ticks bit # 6 |        0.998 |     133.637 |    61.18 B/sec|
+    |                    ticks bit # 7 |        0.997 |     133.637 |    61.09 B/sec|
+    |                    ticks bit # 8 |        0.987 |     133.637 |    60.52 B/sec|
+    |                    ticks bit # 9 |        0.952 |     133.637 |    58.36 B/sec|
+    |                    ticks bit #10 |        0.932 |     133.637 |    57.13 B/sec|
+    |                    ticks bit #11 |        0.866 |     133.637 |    53.07 B/sec|
+    |                    ticks bit #12 |        0.670 |     133.637 |    41.06 B/sec|
+    |                    ticks bit #13 |        0.714 |     133.637 |    43.74 B/sec|
+    |                   EntropyFileRNG |        0.999 |       0.004 |   1.94 MiB/sec|
+    |EntropyFileRNG (RIPEMD256_256bit) |        0.999 |       0.001 |   7.27 MiB/sec|
+    |   EntropyFileRNG (SHA256_256bit) |        0.999 |       0.002 |   4.11 MiB/sec|
+    |   EntropyFileRNG (SHA512_512bit) |        0.999 |       0.002 |   4.03 MiB/sec|
+    |EntropyFileRNG (Whirlpool_512bit) |        1.000 |       0.021 | 388.80 KiB/sec|
+    |                         AllZeros |        0.000 |       0.001 |     0.00 B/sec|
+
+Sample Performance (Max OSX 10.9.4 Mavericks, Intel Core i5)
+
+    |                    AlgorithmName : bits per bit : elapsed sec : effective rate|
+    |----------------------------------|--------------|-------------|---------------|
+    |                    TinHatURandom :        0.999 :       0.006 :   1.47 MiB/sec|
+    |                     TinHatRandom :        1.000 :      36.799 :   222.61 B/sec|
+    |   SystemRNGCryptoServiceProvider :        0.999 :       0.002 :   4.89 MiB/sec|
+    |         RNGCryptoServiceProvider :        1.000 :       0.001 :   9.08 MiB/sec|
+    |         ThreadedSeedGeneratorRNG :        0.984 :       2.047 :   3.94 KiB/sec|
+    |      ThreadedSeedGenerator(fast) :        0.130 :       0.001 : 725.12 KiB/sec|
+    |      ThreadedSeedGenerator(slow) :        0.979 :       0.004 :   2.22 MiB/sec|
+    |               ThreadSchedulerRNG :        1.000 :      73.829 :   110.92 B/sec|
+    |                    ticks bit # 0 :        0.000 :      73.364 :     0.00 B/sec|
+    |                    ticks bit # 1 :        0.999 :      73.364 :   111.55 B/sec|
+    |                    ticks bit # 2 :        0.999 :      73.364 :   111.54 B/sec|
+    |                    ticks bit # 3 :        0.999 :      73.364 :   111.59 B/sec|
+    |                    ticks bit # 4 :        1.000 :      73.364 :   111.65 B/sec|
+    |                    ticks bit # 5 :        0.999 :      73.364 :   111.58 B/sec|
+    |                    ticks bit # 6 :        1.000 :      73.364 :   111.62 B/sec|
+    |                    ticks bit # 7 :        0.999 :      73.364 :   111.55 B/sec|
+    |                    ticks bit # 8 :        0.994 :      73.364 :   110.96 B/sec|
+    |                    ticks bit # 9 :        0.995 :      73.364 :   111.15 B/sec|
+    |                    ticks bit #10 :        0.972 :      73.364 :   108.54 B/sec|
+    |                    ticks bit #11 :        0.912 :      73.364 :   101.89 B/sec|
+    |                    ticks bit #12 :        0.703 :      73.364 :    78.55 B/sec|
+    |                    ticks bit #13 :        0.482 :      73.364 :    53.82 B/sec|
+    |                   EntropyFileRNG :        0.999 :       0.003 :   2.64 MiB/sec|
+    |EntropyFileRNG (RIPEMD256_256bit) :        0.999 :       0.001 :   9.49 MiB/sec|
+    |   EntropyFileRNG (SHA256_256bit) :        0.999 :       0.002 :   5.25 MiB/sec|
+    |   EntropyFileRNG (SHA512_512bit) :        0.999 :       0.003 :   3.12 MiB/sec|
+    |EntropyFileRNG (Whirlpool_512bit) :        0.999 :       0.009 : 943.64 KiB/sec|
+    |                         AllZeros :        0.000 :       0.024 :     0.00 B/sec|
 
 ## Support ##
 
