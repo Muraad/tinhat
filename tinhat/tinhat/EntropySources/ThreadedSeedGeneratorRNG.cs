@@ -137,7 +137,7 @@ namespace tinhat.EntropySources
             /*
              * TODO We need to think about the architecture here, such that we don't have problems disposing static things.
              * 
-            poolFullARE.Dispose();
+            mainThreadLoopARE.Dispose();
             myFifoStream.Dispose();
             */
             base.Dispose(disposing);

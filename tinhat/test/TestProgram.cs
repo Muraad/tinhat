@@ -3,72 +3,110 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using tinhat;
+using System.IO;
+using SharpCompress.Compressor.LZMA;
 
 namespace test
 {
     class TestProgram
     {
+        static double GetCompressionRatioLowerBound(int Length)
+        {
+            /* 
+             * If we feed strings of all zero's into lzma, for various input lengths, here are the output lengths, to be 
+             * used as the lower bound for how much compression could possibly squish things.  This is actually the envelope
+             * of the output size, up to 8192 input size.  So in reality, sometimes it could squish more, but by taking the
+             * envelope, we reduce our estimate of the entropy in the user string.
+             *     2-274     : 6.985 + 0.007326 * Length
+             *     275-564   : 7.103 + 0.00689655 * Length
+             *     565-1384  : 7.555 + 0.00609756 * Length
+             *     1385-2202 : 9.227 + 0.00488998 * Length
+             *     2203-3022 : 9.254 + 0.00487805 * Length
+             *     3023-4096 : 12.741 + 0.00372439 * Length
+             *     4097-5188 : 12.993 + 0.003663 * Length
+             *     5189-6025 : 13.401 + 0.00358423 * Length
+             *     >=6026    : 17.341 + 0.0029304 * Length
+             *     
+             * This is the envelope of the output size, for varying lengths of input obtained from urandom
+             *     1-8       : 4.875 + 1.125 * Length
+             *     9-37      : 5.068965512 + 1.103448276 * Length
+             *     38-49     : 5.8333333 + 1.08333333 * Length
+             *     50-63     : 6.428571429 + 1.071428571 * Length
+             *     64-95     : 7 + 1.0625 * Length
+             *     96-142    : 8.914893617 + 1.042553191 * Length
+             *     143-168   : 9.5 + 1.038461538 * Length
+             *     169-203   : 11.17142857 + 1.028571429 * Length
+             *     204-401   : 11.84848485 + 1.025252525 * Length
+             *     >=402     : 16.94700013 + 1.012569651 * Length
+            */
+            if (Length < 275)
+                return 6.985 + 0.007326 * Length;
+            else if (Length < 565)
+                return 7.103 + 0.00689655 * Length;
+            else if (Length < 1385)
+                return 7.555 + 0.00609756 * Length;
+            else if (Length < 2203)
+                return 9.227 + 0.00488998 * Length;
+            else if (Length < 3023)
+                return 9.254 + 0.00487805 * Length;
+            else if (Length < 4097)
+                return 12.741 + 0.00372439 * Length;
+            else if (Length < 5189)
+                return 12.993 + 0.003663 * Length;
+            else if (Length < 6026)
+                return 13.401 + 0.00358423 * Length;
+            else
+                return 17.341 + 0.0029304 * Length;
+        }
+        static double GetCompressionRatioUpperBound(int Length)
+        {
+            if (Length < 9)
+                return 4.875 + 1.125 * Length;
+            else if (Length < 38)
+                return 5.068965512 + 1.103448276 * Length;
+            else if (Length < 50)
+                return 5.8333333 + 1.08333333 * Length;
+            else if (Length < 64)
+                return 6.428571429 + 1.071428571 * Length;
+            else if (Length < 96)
+                return 7 + 1.0625 * Length;
+            else if (Length < 143)
+                return 8.914893617 + 1.042553191 * Length;
+            else if (Length < 169)
+                return 9.5 + 1.038461538 * Length;
+            else if (Length < 204)
+                return 11.17142857 + 1.028571429 * Length;
+            else if (Length < 402)
+                return 11.84848485 + 1.025252525 * Length;
+            else
+                return 16.94700013 + 1.012569651 * Length;
+        }
         static double GetCompressionRatio(byte[] data)
         {
-            var randBits = new byte[data.Length * 8];
-            for (int i = 0; i < data.Length; i++)
+            int Length = data.Length;
+            double lowerBound = GetCompressionRatioLowerBound(Length);
+            double upperBound = GetCompressionRatioUpperBound(Length);
+
+            double compressionRatio;
+            using (var outStream = new MemoryStream())
             {
-                for (int j = 0; j < 8; j++)
+                using (var lzmaStream = new LzmaStream(new LzmaEncoderProperties(), false, outStream))
                 {
-                    randBits[8 * i + j] = (byte)((data[i] >> j) % 2);
-                }
-            }
-            double retVal = double.MaxValue;
-            using (var outStream = new System.IO.MemoryStream())
-            {
-                using (var gzStream = new System.IO.Compression.GZipStream(outStream,System.IO.Compression.CompressionMode.Compress))
-                {
-                    using (var inStream = new System.IO.MemoryStream(randBits))
-                    {
-                        inStream.CopyTo(gzStream);
-                    }
-                }
-                var outBytes = outStream.ToArray();
-                double gzRatio = ((double)outBytes.Length / data.Length);
-                if (gzRatio < retVal)
-                {
-                    retVal = gzRatio;
-                }
-            }
-            using (var outStream = new System.IO.MemoryStream())
-            {
-                using (var bzipStream = new SharpCompress.Compressor.BZip2.BZip2Stream(outStream,SharpCompress.Compressor.CompressionMode.Compress,true))
-                {
-                    using (var inStream = new System.IO.MemoryStream(randBits))
-                    {
-                        inStream.CopyTo(bzipStream);
-                    }
-                }
-                var outBytes = outStream.ToArray();
-                double bzip2Ratio = ((double)outBytes.Length / data.Length);
-                if (bzip2Ratio < retVal)
-                {
-                    retVal = bzip2Ratio;
-                }
-            }
-            using (var outStream = new System.IO.MemoryStream())
-            {
-                var lzmaProps = new SharpCompress.Compressor.LZMA.LzmaEncoderProperties();
-                using (var lzmaStream = new SharpCompress.Compressor.LZMA.LzmaStream(lzmaProps,false,outStream))
-                {
-                    using (var inStream = new System.IO.MemoryStream(randBits))
+                    using (var inStream = new MemoryStream(data))
                     {
                         inStream.CopyTo(lzmaStream);
                     }
                 }
-                var outBytes = outStream.ToArray();
-                double lzmaRatio = ((double)outBytes.Length / data.Length);
-                if (lzmaRatio < retVal)
-                {
-                    retVal = lzmaRatio;
-                }
+                byte[] outBytes = outStream.ToArray();
+                compressionRatio = (outBytes.Length - lowerBound) / (upperBound - lowerBound);
+                // Because we used an envelope for both the upper and lower bound, the compression ratio is very unlikely
+                // to exceed 1.0, but it's possible.  It will quite often be negative if the input is pure rubbish.
+                if (compressionRatio > 1.0)
+                    compressionRatio = 1.0;
+                if (compressionRatio < 0)
+                    compressionRatio = 0;
             }
-            return retVal;
+            return compressionRatio;
         }
         private class RandResult
         {
@@ -137,7 +175,9 @@ namespace test
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
             System.Console.WriteLine((after - before).ToString());
+            System.Console.Write("Sleeping to allow pool to fill...");
             System.Threading.Thread.Sleep(3000);    // Should be enough time for its pool to fill up, so it won't slow down next:
+            System.Console.WriteLine("  Done.");
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
@@ -167,42 +207,56 @@ namespace test
             System.Console.WriteLine((after - before).ToString());
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
-            const int numResults = 6;
-            var ThreadSchedulerResults = new RandResult[numResults+1];     // Will test once with default settings, and 4 times with individual bits
-            var ThreadSchedulerResultsBytes = new byte[numResults + 1][];
-            for (int i = 0; i < numResults+1; i++)
-            {
-                ThreadSchedulerResults[i] = new RandResult();
-                ThreadSchedulerResultsBytes[i] = new byte[randBytesLength];
-            }
-            ThreadSchedulerResults[numResults].AlgorithmName = "ThreadSchedulerRNG (with mixing)";
-            System.Console.Write(ThreadSchedulerResults[numResults].AlgorithmName + " ");
+            result = new RandResult();
+            result.AlgorithmName = "ThreadSchedulerRNG";
+            System.Console.Write(result.AlgorithmName + " ");
             before = DateTime.Now;
-            var myThreadSchedulerRng = new tinhat.EntropySources.ThreadSchedulerRNG();
-            myThreadSchedulerRng.GetBytes(ThreadSchedulerResultsBytes[numResults]);
+            var myThreadSchedulerRNG = new tinhat.EntropySources.ThreadSchedulerRNG();
+            myThreadSchedulerRNG.GetBytes(randBytes);
             after = DateTime.Now;
+            result.TimeSpan = after - before;
+            result.CompressionRatio = GetCompressionRatio(randBytes);
+            results.Add(result);
             System.Console.WriteLine((after - before).ToString());
-            ThreadSchedulerResults[numResults].TimeSpan = after - before;
-            tinhat.EntropySources.ThreadSchedulerRNG.UseMixingFunction = false;
-            for (int bitPosition = 0; bitPosition < numResults; bitPosition++)
+            tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
+
+            const int numResults = 14;
+            System.Console.Write("ticks bit positions ");
+            before = DateTime.Now;
+            var ticksResults = new RandResult[numResults];
+            var ticksResultsBytes = new byte[numResults][];
+            for (int i = 0; i < numResults; i++)
             {
-                ThreadSchedulerResults[bitPosition].AlgorithmName = "ThreadSchedulerRNG (bit " + bitPosition.ToString() + ")";
-                System.Console.Write(ThreadSchedulerResults[bitPosition].AlgorithmName + " ");
-                tinhat.EntropySources.ThreadSchedulerRNG.UseBitPosition = bitPosition;
-                before = DateTime.Now;
-                myThreadSchedulerRng.GetBytes(ThreadSchedulerResultsBytes[bitPosition]);
-                after = DateTime.Now;
-                System.Console.WriteLine((after - before).ToString());
-                ThreadSchedulerResults[bitPosition].TimeSpan = after - before;
+                ticksResults[i] = new RandResult();
+                ticksResults[i].AlgorithmName = "ticks bit #" + i.ToString().PadLeft(2);
+                ticksResultsBytes[i] = new byte[randBytesLength];
             }
-            tinhat.EntropySources.ThreadSchedulerRNG.UseMixingFunction = true;
-            for (int i = 0; i < numResults + 1; i++)
+            for (int i = 0; i < randBytesLength; i++)
             {
-                ThreadSchedulerResults[i].CompressionRatio = GetCompressionRatio(ThreadSchedulerResultsBytes[i]);
-                tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(ThreadSchedulerResultsBytes[i]);
-                results.Add(ThreadSchedulerResults[i]);
+                for (int j = 0; j < 8; j++)
+                {
+                    long ticks = DateTime.Now.Ticks;
+                    for (int bitPos = 0; bitPos < numResults; bitPos++)
+                    {
+                        ticksResultsBytes[bitPos][i] <<= 1;
+                        ticksResultsBytes[bitPos][i] += (byte)(ticks % 2);
+                        ticks >>= 1;
+                    }
+                    System.Threading.Thread.Sleep(1);
+                }
             }
+            after = DateTime.Now;
+            tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(tinhat.EntropySources.EntropyFileRNG.ConcatenateByteArrays(ticksResultsBytes));
+            for (int i = 0; i < numResults; i++)
+            {
+                ticksResults[i].TimeSpan = after - before;
+                ticksResults[i].CompressionRatio = GetCompressionRatio(ticksResultsBytes[i]);
+                results.Add(ticksResults[i]);
+            }
+            System.Console.WriteLine((after - before).ToString());
+            System.Console.Write("Sleeping to allow pool to fill...");
             System.Threading.Thread.Sleep(15000);    // Should be enough time for its pool to fill up, so it won't slow down next:
+            System.Console.WriteLine("  Done.");
 
             result = new RandResult();
             result.AlgorithmName = "EntropyFileRNG";
@@ -278,7 +332,9 @@ namespace test
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
             System.Console.WriteLine((after - before).ToString());
+            System.Console.Write("Sleeping to allow pool to fill...");
             System.Threading.Thread.Sleep(15000);    // Should be enough time for its pool to fill up, so it won't slow down next:
+            System.Console.WriteLine("  Done.");
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             result = new RandResult();
@@ -291,7 +347,9 @@ namespace test
             result.CompressionRatio = GetCompressionRatio(randBytes);
             results.Add(result);
             System.Console.WriteLine((after - before).ToString());
+            System.Console.Write("Sleeping to allow pool to fill...");
             System.Threading.Thread.Sleep(15000);    // Should be enough time for its pool to fill up, so it won't slow down next:
+            System.Console.WriteLine("  Done.");
             tinhat.EntropySources.EntropyFileRNG.AddSeedMaterial(randBytes);
 
             System.Console.WriteLine("");

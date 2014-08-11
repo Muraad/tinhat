@@ -11,114 +11,187 @@ namespace tinhat.EntropySources
     /// as many processes and threads compete for CPU cycles.  The granularity of time to wake up from sleep is
     /// something like +/- a few ms, while the granularity of DateTime.Now is Ticks, 10million per second.  Although
     /// the OS scheduler is surely deterministic, there should be a fair amount of entropy in the least significant
-    /// bit of DateTime.Now.Ticks upon thread waking.  But since the OS scheduler is surely deterministic, it is
+    /// bits of DateTime.Now.Ticks upon thread waking.  But since the OS scheduler is surely deterministic, it is
     /// not recommended to use ThreadSchedulerRNG as your only entropy source.  It is recommended to use this
     /// class ONLY in addition to other entropy sources.
     /// </summary>
     public sealed class ThreadSchedulerRNG : RandomNumberGenerator
     {
         /// <summary>
-        /// ThreadSchedulerRNG will always try to fill up to MaxPoolSize bytes available for read
+        /// By putting the core into its own class, it makes it easy for us to create a single instance of it, referenced 
+        /// by a static member of ThreadSchedulerRNG, without any difficulty of finalizing & disposing etc.
         /// </summary>
-        public static int MaxPoolSize { get; private set; }
-
-        /// <summary>
-        /// Internal testing only. Do not change. Used only during unit tests, to ensure entropy measurements are measurable
-        /// </summary>
-        public static bool UseMixingFunction = true;
-        /// <summary>
-        /// Internal testing only. Do not change. Used only during unit tests, to ensure entropy measurements are measurable
-        /// </summary>
-        public static int UseBitPosition;
-
-        private static object fifoStreamLock = new object();
-        private static SupportingClasses.FifoStream myFifoStream = new SupportingClasses.FifoStream(Zeroize: true);
-        private static Thread mainThread;
-        private static AutoResetEvent poolFullARE = new AutoResetEvent(false);
-
-        // Interlocked cannot handle bools.  So using int as if it were bool.
-        private const int TrueInt = 1;
-        private const int FalseInt = 0;
-        private int disposed = FalseInt;
-
-        private const int chunkSize = 16;
-        private static byte[] chunk;
-        private static int chunkByteIndex = 0;
-        private static int chunkBitIndex = 0;
-
-        static ThreadSchedulerRNG()
+        private class ThreadSchedulerRNGCore
         {
-            chunk = new byte[chunkSize];
-            MaxPoolSize = 4096;
-            mainThread = new Thread(new ThreadStart(mainThreadLoop));
-            mainThread.IsBackground = true;    // Don't prevent application from dying if it wants to.
-            mainThread.Start();
-        }
-        public ThreadSchedulerRNG()
-        {
-        }
-        private static int Read(byte[] buffer, int offset, int count)
-        {
-            try
+            private const int MaxPoolSize = 4096;
+            private object fifoStreamLock = new object();
+            private SupportingClasses.FifoStream myFifoStream = new SupportingClasses.FifoStream(Zeroize: true);
+            private Thread mainThread;
+            private AutoResetEvent mainThreadLoopARE = new AutoResetEvent(false);
+            private AutoResetEvent bytesAvailableARE = new AutoResetEvent(false);
+
+            // Interlocked cannot handle bools.  So using int as if it were bool.
+            private const int TrueInt = 1;
+            private const int FalseInt = 0;
+            private int disposed = FalseInt;
+
+            private const int chunkSize = 16;
+            private byte[] chunk;
+            private int chunkByteIndex = 0;
+            private int chunkBitIndex = 0;
+            public ThreadSchedulerRNGCore()
+            {
+                chunk = new byte[chunkSize];
+                mainThread = new Thread(new ThreadStart(mainThreadLoop));
+                mainThread.IsBackground = true;    // Don't prevent application from dying if it wants to.
+                mainThread.Start();
+            }
+            public int Read(byte[] buffer, int offset, int count)
             {
                 int pos = offset;
-                lock (fifoStreamLock)
+                try
                 {
-                    while (pos < count)
+                    lock (fifoStreamLock)
                     {
-                        long readCount = myFifoStream.Length;   // All the available bytes
-                        if (pos + readCount >= count)
+                        while (pos < offset + count)
                         {
-                            readCount = count - pos;    // Don't try to read more than we need
-                        }
-                        int bytesRead = -1;
-                        while (readCount > 0 && bytesRead != 0)
-                        {
-                            bytesRead = myFifoStream.Read(buffer, pos, (int)readCount);
-                            readCount -= bytesRead;
-                            pos += bytesRead;
-                        }
-                        if (pos < count)
-                        {
-                            if (pos < count)
+                            long readCount = myFifoStream.Length;   // All the available bytes
+                            if (pos + readCount >= offset + count)
                             {
-                                // Expect 16 bytes every 32ms because 4 bits per sample, one sample every ms, and chunk in blocks of 16
-                                Thread.Sleep(32);
+                                readCount = offset + count - pos;    // Don't try to read more than we need
+                            }
+                            int bytesRead = -1;
+                            while (readCount > 0 && bytesRead != 0)
+                            {
+                                bytesRead = myFifoStream.Read(buffer, pos, (int)readCount);
+                                mainThreadLoopARE.Set();
+                                readCount -= bytesRead;
+                                pos += bytesRead;
+                            }
+                            if (pos < offset + count)
+                            {
+                                bytesAvailableARE.WaitOne();
                             }
                         }
+                        return count;
                     }
-                    return count;
+                }
+                catch
+                {
+                    if (disposed == TrueInt)
+                    {
+                        throw new System.IO.IOException("Read() interrupted by Dispose()");
+                    }
+                    else
+                    {
+                        throw;
+                    }
                 }
             }
-            finally
+            private void mainThreadLoop()
             {
-                poolFullARE.Set();
+                try
+                {
+                    while (this.disposed == FalseInt)
+                    {
+                        if (myFifoStream.Length < MaxPoolSize)
+                        {
+                            // While running in this tight loop, consumes approx 0% cpu time.  Cannot even measure with Task Manager
+
+                            /* With 10m ticks per second, and Thread.Sleep() precision of 1ms, it means Ticks is 10,000 times more precise than
+                             * the sleep wakeup timer.  This means there could exist as much as 14 bits of entropy in every thread wakeup cycle,
+                             * but realistically that's completely unrealistic.  I ran this 64*1024 times, and benchmarked each bit individually.
+                             * The estimated entropy bits per bit of Ticks sample is very near 1 bit for each of the first 8 bits, and quickly
+                             * deteriorates after that.
+                             * 
+                             * Surprisingly, the LSB #0 and LSB #1 demonstrated the *least* entropy within the first 8 bits, but it was still
+                             * 0.987 bits per bit, which could be within sampling noise.  Bits 9, 10, and beyond very clearly demonstrated a
+                             * degradation in terms of entropy quality.
+                             * 
+                             * The estimated sum total of all entropy in all 64 bits is about 14 bits of entropy per sample, which is just 
+                             * coincidentally the same as the difference in precision described above.
+                             * 
+                             * Based on superstition, I would not attempt to extract anywhere near 14 bits per sample, not even 8 bits. But since 
+                             * the first 8 bits all measured to be very close to 1 bit per bit, I am comfortable extracting at least 2 or 4 bits.
+                             * 
+                             * To be ultra-conservative, I'll extract only a single bit each time, and it will be a mixture of all 64 bits.  Which
+                             * means, as long as *any* bit is unknown to an adversary, or the sum total of the adversary's uncertainty over all 64
+                             * bits > 50%, then the adversary will have at best 50% chance of guessing the output bit, which means it is 1 bit of
+                             * good solid entropy.  In other words, by mashing all ~8-14 bits of entrpoy into a single bit, the resultant bit
+                             * should be a really good quality entropy bit.
+                             */
+
+                            long ticks = DateTime.Now.Ticks;
+                            byte newBit = 0;
+                            for (int i = 0; i < 64; i++)    // Mix all 64 bits together to produce a single output bit
+                            {
+                                newBit ^= (byte)(ticks % 2);
+                                ticks >>= 1;
+                            }
+                            GotBit(newBit);
+                            Thread.Sleep(1);
+                        }
+                        else
+                        {
+                            mainThreadLoopARE.WaitOne();
+                        }
+                    }
+                }
+                catch
+                {
+                    if (disposed == FalseInt)   // If we caught an exception after being disposed, just swallow it.
+                    {
+                        throw;
+                    }
+                }
+            }
+            private void GotBit(byte bitByte)
+            {
+                if (bitByte > 1)
+                {
+                    throw new ArgumentException("bitByte must be equal to 0 or 1");
+                }
+                chunk[chunkByteIndex] <<= 1;    // << operator discards msb's and zero-fills lsb's, never causes overflow
+                if (bitByte == 1)
+                {
+                    chunk[chunkByteIndex]++;    // By incrementing, we are setting the lsb to 1.
+                }
+                chunkBitIndex++;
+                if (chunkBitIndex > 7)
+                {
+                    chunkBitIndex = 0;
+                    chunkByteIndex++;
+                    if (chunkByteIndex >= chunkSize)
+                    {
+                        myFifoStream.Write(chunk, 0, chunkSize);
+                        bytesAvailableARE.Set();
+                        chunkByteIndex = 0;
+                    }
+                }
+            }
+            protected void Dispose(bool disposing)
+            {
+                if (Interlocked.Exchange(ref disposed,TrueInt) == TrueInt)
+                {
+                    return;
+                }
+                mainThreadLoopARE.Set();
+                mainThreadLoopARE.Dispose();
+                bytesAvailableARE.Set();
+                bytesAvailableARE.Dispose();
+                myFifoStream.Dispose();
+            }
+            ~ThreadSchedulerRNGCore()
+            {
+                Dispose(false);
             }
         }
-        public byte[] GetAvailableBytes(int MaxLength)
-        {
-            lock (fifoStreamLock)
-            {
-                long availBytesCount = myFifoStream.Length;
-                byte[] allBytes;
-                if (availBytesCount > MaxLength)
-                {
-                    allBytes = new byte[MaxLength];
-                }
-                else // availBytesCount could be 0, or greater
-                {
-                    allBytes = new byte[availBytesCount];
-                }
-                if (availBytesCount > 0)
-                {
-                    Read(allBytes, 0, allBytes.Length);
-                }
-                return allBytes;
-            }
-        }
+
+        private static ThreadSchedulerRNGCore core = new ThreadSchedulerRNGCore();
+
         public override void GetBytes(byte[] data)
         {
-            if (Read(data,0,data.Length) != data.Length)
+            if (core.Read(data,0,data.Length) != data.Length)
             {
                 throw new CryptographicException("Failed to return requested number of bytes");
             }
@@ -129,7 +202,7 @@ namespace tinhat.EntropySources
             while (offset < data.Length)
             {
                 var newBytes = new byte[data.Length - offset];
-                if (Read(newBytes,0,newBytes.Length) != newBytes.Length)
+                if (core.Read(newBytes,0,newBytes.Length) != newBytes.Length)
                 {
                     throw new CryptographicException("Failed to return requested number of bytes");
                 }
@@ -145,122 +218,7 @@ namespace tinhat.EntropySources
         }
         protected override void Dispose(bool disposing)
         {
-            if (Interlocked.Exchange(ref disposed,TrueInt) == TrueInt)
-            {
-                return;
-            }
-            poolFullARE.Set();
-            /*
-             * TODO We need to think about the architecture here, such that we don't have problems disposing static things.
-             * 
-            poolFullARE.Dispose();
-            myFifoStream.Dispose();
-             */
             base.Dispose(disposing);
-        }
-        private static void mainThreadLoop()
-        {
-            try
-            {
-                /* We are only using AES for mixing - meaning - We have an estimated 14 bits of entropy collectively scattered
-                 * over the least significant 31 bits of Ticks.  We don't trust it very much, so we're willing to extract only
-                 * 4 bits.  So how do you mix those 31 bits together in such a way as to extract 4 bits out of it? We're using
-                 * Aes in ECB mode.  Input 64 bits of 0's with 64 bits from Ticks. Output should be essentially random, and we
-                 * extract only 4 bits from it.
-                 */
-                var aes = new AesFastEngine();
-                var keyParam = new KeyParameter(new byte[16]);  // Because I'm only using AES for mixing, I literally don't care about the key.
-                aes.Init(forEncryption: true, parameters: keyParam);
-                int aesBlockSize = aes.GetBlockSize();     // 16
-
-                byte[] inbuf = new byte[aesBlockSize];
-                byte[] outbuf = new byte[aesBlockSize];
-
-                while (true)
-                {
-                    if (myFifoStream.Length < MaxPoolSize)
-                    {
-                        // While running in this tight loop, consumes approx 0% cpu time.  Cannot even measure with Task Manager
-
-                        /* With 10m ticks per second, and Thread.Sleep() precision of 1ms, it means Ticks is 10,000 times more precise than
-                         * the sleep wakeup timer.  This means there could exist as much as 14 bits of entropy in every thread wakeup cycle,
-                         * but realistically that's completely unrealistic.  I ran this 64*1024 times, and benchmarked each bit individually.
-                         * The estimated entropy bits per bit of Ticks sample is very near 1 bit for each of the first 8 bits, and quickly
-                         * deteriorates after that.
-                         * 
-                         * Surprisingly, the LSB #0 and LSB #1 demonstrated the *least* entropy within the first 8 bits, but it was still
-                         * 0.987 bits per bit, which could be within sampling noise.  Bits 9, 10, and beyond very clearly demonstrated a
-                         * degradation in terms of entropy quality.
-                         * 
-                         * The estimated sum total of all entropy in all 64 bits is about 14 bits of entropy per sample, which is just 
-                         * coincidentally the same as the difference in precision described above.
-                         * 
-                         * Based on superstition, I would not attempt to extract anywhere near 14 bits per sample, not even 8 bits. But since 
-                         * the first 8 bits all measured to be very close to 1 bit per bit, I am comfortable extracting at least 2 or 4 bits.
-                         */
-
-                        long ticks = DateTime.Now.Ticks;
-
-                        if (UseMixingFunction)
-                        {
-                            const int numGoodBits = 4;  // See comment above. We could get up to 8 or 14 bits, but I'm comfortable with 4.
-                            byte[] ticksBytes = BitConverter.GetBytes(ticks);  // Don't care about endianness
-                            Array.Copy(ticksBytes, 0, inbuf, 0, ticksBytes.Length);
-                            Array.Clear(ticksBytes, 0, ticksBytes.Length);
-                            aes.ProcessBlock(inbuf, 0, outbuf, 0);
-                            for (int i = 0; i < numGoodBits; i++)
-                            {
-                                byte newBit = (byte)(outbuf[0] % 2);
-                                outbuf[0] >>= 1;
-                                GotBit(newBit);
-                            }
-                        }
-                        else
-                        {
-                            ticks >>= UseBitPosition;
-                            byte newBit = (byte)(ticks % 2);
-                            GotBit(newBit);
-                        }
-                        Thread.Sleep(1);
-                    }
-                    else
-                    {
-                        poolFullARE.WaitOne();
-                    }
-                }
-            }
-            catch
-            {
-                // TODO think about changing architecture so we correctly avoid disposing static objects, and we gracefully terminate, etc
-                // It is not good to catch and swallow all exceptions.
-                // 
-                // If we got disposed while in the middle of doing stuff, we could throw any type of exception, and 
-                // I would want to suppress those.
-            }
-        }
-
-        private static void GotBit(byte bitByte)
-        {
-            if (bitByte > 1)
-            {
-                throw new ArgumentException("bitByte must be equal to 0 or 1");
-            }
-            chunk[chunkByteIndex] <<= 1;    // << operator discards msb's and zero-fills lsb's, never causes overflow
-            if (bitByte == 1)
-            {
-                chunk[chunkByteIndex]++;    // By incrementing, we are setting the lsb to 1.
-            }
-            chunkBitIndex++;
-            if (chunkBitIndex > 7)
-            {
-                chunkBitIndex = 0;
-                chunkByteIndex++;
-                if (chunkByteIndex >= chunkSize)
-                {
-                    myFifoStream.Write(chunk, 0, chunkSize);
-                    chunkByteIndex = 0;
-                }
-            }
         }
         ~ThreadSchedulerRNG()
         {

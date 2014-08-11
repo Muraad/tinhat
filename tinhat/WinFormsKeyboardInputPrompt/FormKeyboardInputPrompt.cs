@@ -11,17 +11,17 @@ namespace WinFormsKeyboardInputPrompt
 {
     public partial class FormKeyboardInputPrompt : Form
     {
-        private int numChars;
+        private int requestedEntropyBitCount;
         /// <summary>
-        /// numChars less than 20 or 30 is basically insane. Reasonable is 64 to 512 or so.
+        /// requestedEntropyBitCount less than 20 or 30 is basically insane. Reasonable is 64 to 512 or so.
         /// </summary>
         public FormKeyboardInputPrompt(int numChars)
         {
             if (numChars < 2)   // Of course, anything less than 20 or 30 is basically insane
             {
-                throw new ArgumentException("numChars");
+                throw new ArgumentException("requestedEntropyBitCount");
             }
-            this.numChars = numChars;
+            this.requestedEntropyBitCount = numChars;
             InitializeComponent();
         }
 
@@ -32,7 +32,12 @@ namespace WinFormsKeyboardInputPrompt
         private void UpdateLabelPleaseEnterPrompt()
         {
             string remainingCharsCountString;
-            if (textBoxUserChars.Text.Length >= numChars)
+#if WITHLZMA
+            int estimatedBits = KeyboardEntropyEstimator.EstimateBits(textBoxUserChars.Text);
+#else
+            int estimatedBits = textBoxUserChars.Text.Length;
+#endif
+            if (estimatedBits >= requestedEntropyBitCount)
             {
                 buttonOK.Enabled = true;
                 remainingCharsCountString = "(All Done!)";
@@ -40,7 +45,7 @@ namespace WinFormsKeyboardInputPrompt
             else
             {
                 buttonOK.Enabled = false;
-                remainingCharsCountString = (numChars - textBoxUserChars.Text.Length).ToString();
+                remainingCharsCountString = (requestedEntropyBitCount - estimatedBits).ToString();
             }
             this.labelPleaseEnterPrompt.Text = "Please randomly enter at least this many characters: " + remainingCharsCountString;
         }
