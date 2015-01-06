@@ -233,6 +233,7 @@ namespace tinhat.EntropySources
                 if (System.Diagnostics.Debugger.IsAttached)
                 {
                     System.Diagnostics.Debugger.Break();
+                    GC.KeepAlive(e);	// suppresses warning about unused variable
                 }
             }
             Array.Clear(pool, 0, pool.Length);
