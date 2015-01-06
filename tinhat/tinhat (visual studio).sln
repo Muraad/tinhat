@@ -5,7 +5,7 @@ VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "tinhat", "tinhat\tinhat.csproj", "{D2282AEE-37A5-4F1D-91D7-A418CDD74CCD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "test (VS)", "test\test (VS).csproj", "{F5E863FB-D5AD-457F-A98D-46FDF1628C21}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "test", "test\test.csproj", "{F5E863FB-D5AD-457F-A98D-46FDF1628C21}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowsFormsMouse", "WindowsFormsMouse\WindowsFormsMouse.csproj", "{EDF22873-E622-4C74-B7A5-D0D48D5FFAD5}"
 EndProject
